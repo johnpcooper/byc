@@ -145,6 +145,12 @@ def get_channel_names(fov_path):
     rep_image_filename = fov_slices_filenames[0]
     rep_image = tf.imread(fov_path + '/%s' % rep_image_filename)
     len_channels = len(rep_image)
+    # if it's a single channel image, len_channels will return number of pixels, not 
+    # the actual number of channels so I'm filtering for that here
+    if len_channels > 10:
+    	len_channels = 1
+	else: 
+		pass
 
     print("Detected {} channels".format(len_channels))
     print("Enter names below:")
