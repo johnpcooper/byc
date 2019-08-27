@@ -148,9 +148,9 @@ def get_channel_names(fov_path):
     # if it's a single channel image, len_channels will return number of pixels, not 
     # the actual number of channels so I'm filtering for that here
     if len_channels > 10:
-    	len_channels = 1
-	else: 
-		pass
+        len_channels = 1
+    else: 
+        pass
 
     print("Detected {} channels".format(len_channels))
     print("Enter names below:")
@@ -183,7 +183,12 @@ def align_images(fov_path, channel_names):
         index = index + 1
         print("Determining rotation offset %d of %d" % (index, len(images)))
         vis_channel = image[0]
-        rotational_offsets.append(_determine_rotation_offset(vis_channel))
+
+        try:
+            rotational_offsets.append(_determine_rotation_offset(vis_channel))
+        except:
+            # do this if the image is a single channel
+            rotational_offsets.append(_determine_rotation_offset(image))
 
     # create a list of rotationally aligned images rotated according to the rotational_offsets list
     rotated_images = []
@@ -196,9 +201,14 @@ def align_images(fov_path, channel_names):
         index += 1
         print("Rotating image %d of %d" % (index, len(images)))
         rotated_channels_i = []
-        for j in range(0, len(channels_i)):
-            rotated_channels_i.append(rotate_image(channels_i[j], rotational_offsets[i]))
-            
+
+        try:
+            for j in range(0, len(channels_i)):
+                rotated_channels_i.append(rotate_image(channels_i[j], rotational_offsets[i]))
+        except:
+            # again, need to do this if single channel dataset
+            rotated_channels_i = rotate_image(images[i], rotational_offsets[i])
+
         rotated_images.append(rotated_channels_i)
     
     # calculate translational offsets
@@ -208,7 +218,12 @@ def align_images(fov_path, channel_names):
         image = rotated_images[i][0]
         index += 1
         print("Determining registration offset %d of %d" % (index, len(images)))
-        translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
+        try:
+            # align based on feautres of image 0, I think I should change this to align
+            # to image i-1
+            translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
+        except:
+            translational_offsets.append(_determine_registration_offset(rotated_images[0], rotated_images[i]))
         
     # now translate the images
     translated_images = []
@@ -218,16 +233,25 @@ def align_images(fov_path, channel_names):
         print("Translating image %d of %d" % (index, len(images)))
         
         translated_channels_i = []
-        for j in range(0, len(images[0])):
-            translated_channels_i.append(translate_image(rotated_images[i][j], translational_offsets[i]))
+
+        try:
+            for j in range(0, len(images[0])):
+                translated_channels_i.append(translate_image(rotated_images[i][j], translational_offsets[i]))
+        except:
+            translated_channels_i = (translate_image(rotated_images[i], translational_offsets[i]))
+
         translated_images.append(translated_channels_i)
     
-    # make a dictionary to hold
+    # make a dictionary to hold images for each channel
     keys = channel_names
     values = []
-    for j in range(0, len(images[0])):        
-        values.append([translated_images[i][j] for i in range(0, len(translated_images))])
-        
+
+    if len(channel_names) > 1:
+        for j in range(0, len(images[0])):        
+            values.append([translated_images[i][j] for i in range(0, len(translated_images))])
+    else:
+        values.append([translated_images[i] for i in range(0, len(translated_images))])
+
     translated_images_dict = dict(zip(keys, values))
 
     return translated_images_dict
