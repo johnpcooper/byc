@@ -23,7 +23,7 @@ class Cell_Data(object):
         
         # set lists containing dataframes with measurements for each cell in cells_dfs
         self.raw_dsred_trace_dfs, self.raw_yfp_trace_dfs = self.set_raw_cell_trace_dfs(self.cells_dfs, self.senescent_slices)
-        #self.processed_dsred_trace_dfs, self.processed_trace_dfs = self.set_processed_cell_trace_dfs(self.cells_dfs, self.senescent_slices)
+
     
     def set_fp(self, prompt):
 
@@ -146,8 +146,6 @@ class Cell_Data(object):
 
         return cell_traces_dsred, cell_traces_yfp
     
-    def set_processed_cell_trace_dfs(self, cells_dfs):
-        pass
 
 # define a list that will be filled with indices of cells that are in the same slice
 def sliding_median_window(dataframe, window_width):
@@ -159,13 +157,13 @@ def sliding_median_window(dataframe, window_width):
     
     for i in dataframe.index:
         if i == 0:
-            dataframe.loc[:, 'sliding_median'][i] = dataframe['Mean'][i: window_width + 1].median()
+            dataframe.loc[i, 'sliding_median'] = dataframe.loc[i: window_width + 1, 'Mean'].median()
         
         elif 0 < i < window_width:
-            dataframe.loc[:, 'sliding_median'][i] = dataframe['Mean'][0: i + window_width + 1].median()
+            dataframe.loc[i, 'sliding_median'] = dataframe.loc[0: i + window_width + 1, 'Mean'].median()
                     
         elif i >= window_width:
-            dataframe.loc[:, 'sliding_median'][i] = dataframe['Mean'][i - window_width: i + window_width + 1].median()
+            dataframe.loc[i, 'sliding_median'] = dataframe.loc[i - window_width: i + window_width + 1,'Mean'].median()
             
         else:
             print("Somehow reached an index value out of range. This is the current index:", i)
@@ -182,13 +180,13 @@ def sliding_mean_window(dataframe, window_width):
     
     for i in dataframe.index:
         if i == 0:
-            dataframe.loc[:, 'sliding_mean'][i] = dataframe['Mean'][i: window_width + 1].mean()
+            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[i: window_width + 1, 'Mean'].mean()
         
         elif 0 < i < window_width:
-            dataframe.loc[:, 'sliding_mean'][i] = dataframe['Mean'][0: i + window_width + 1].mean()
+            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[0: i + window_width + 1, 'Mean'].mean()
                     
         elif i >= window_width:
-            dataframe.loc[:, 'sliding_mean'][i] = dataframe['Mean'][i - window_width: i + window_width + 1].mean()
+            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[i - window_width: i + window_width + 1, 'Mean'].mean()
             
         else:
             print("Somehow reached an index value out of range. This is the current index:", i)
@@ -205,13 +203,13 @@ def diameter_sliding_window(dataframe, window_width):
     
     for i in dataframe.index:
         if i == 0:
-            dataframe.loc[:, 'cell_diameter_sliding'][i] = dataframe['cell_diameter(um)'][i: window_width + 1].mean()
+            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][i: window_width + 1].mean()
         
         elif 0 < i < window_width:
-            dataframe.loc[:, 'cell_diameter_sliding'][i] = dataframe['cell_diameter(um)'][0: i + window_width + 1].mean()
+            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][0: i + window_width + 1].mean()
                     
         elif i >= window_width:
-            dataframe.loc[:, 'cell_diameter_sliding'][i] = dataframe['cell_diameter(um)'][i - window_width: i + window_width + 1].mean()
+            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][i - window_width: i + window_width + 1].mean()
             
         else:
             print("Somehow reached an index value out of range. This is the current index:", i)
@@ -230,7 +228,7 @@ def correct_time(dataframe, collection_interval):
     else:
         print("Senescence not observed for this cell")
     
-    dataframe.loc[:, 'minutes'] = dataframe['Slice'] * collection_interval
+    dataframe.loc[:, 'minutes'] = (dataframe['Slice']-1) * collection_interval
     dataframe.loc[:, 'hours'] = dataframe['minutes'] / 60    
     
     return dataframe
@@ -303,6 +301,14 @@ def set_processed_traces(window_width, collection_interval):
     raw_yfp_trace_dfs = cd.raw_yfp_trace_dfs
     
     processed_traces = set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs)
+
+    # add late daughter morphology and cell index data to processed traces
+    for cell_index in range(0, len(cells_dfs)):
+    	cell_master_df = cells_dfs[cell_index]
+    	cell_trace_df = processed_traces[cell_index]
+
+    	cell_trace_df['late_daughter_shape'] = cell_master_df['late_daughter_shape'][cell_master_df.index[0]]
+    	cell_trace_df['cell_index'] = cell_index
     
     return processed_traces
 
