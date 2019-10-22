@@ -1,29 +1,29 @@
 import tifffile as tf
 import tkinter as tk
 import tkinter.filedialog as dia
-import skimage as ski
-import skimage.io as io
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from skimage.filters import try_all_threshold
-from skimage.filters import threshold_minimum
+
+from skimage.io import imsave, concatenate_images
 from skimage.filters import threshold_otsu
 from skimage import img_as_uint
+from read_roi import read_roi_file, read_roi_zip
 
-class Cell_Stacks(object):
+class Cell_Stack(object):
     
-    """ Doc strings """
+    """ Upon instantiation, this class will ask the user to select a master index
+        .csv file containing cell indices. The methods of the class then operate
+        on rois etc. referenced by the master index. For now, the only public variable
+        of this class is self.channel_names which is useful for saving stacks later. """
     
-    def __init__(self):
+    def __init__(self, threshold_channel):
         
-        # set the files that will be used for every cell analyzed
-        self.master_cells_df = self.set_master_cells_df("Choose the .csv for the master index of this experiment")
-        self.cells_dfs = self.set_cells_dfs(self.master_cells_df)
-
-        self.image_stack_dsred = self.set_image_stack("Choose the dsred .tif stack ")
-        self.image_stack_yfp = self.set_image_stack("Choose the yfp .tif stack ")
-        self.image_stack_bf = self.set_image_stack("Choose the brightfield .tif stack ")
+        # Set the master index df for this experiment
+        self.master_cells_df = self.set_master_cells_df("Choose the .csv master index of this experiment")
+        self.threshold_channel = threshold_channel
+        
+        # It may be useful at some point to add code here to run methods below upon instantiation.
     
     def set_fp(self, prompt):
     
@@ -38,480 +38,251 @@ class Cell_Stacks(object):
 
         return fp # return the path to the file you just selected
     
-    def set_image_stack(self, prompt):
-
-        """ Return a tf.imread() object referring to the image stack"""
-
-        fp = self.set_fp(prompt)
-        print("Path to the stack .tif selected:\n%s" % fp)
-        image_stack = tf.imread(fp)
-        # let the user see the tif stack they just instantiated
-        #print("Displaying 0th image in this stack:")
-        #io.imshow(image_stack[0])
-
-        return image_stack
-    
     def set_master_cells_df(self, prompt):
 
         """ Return a dataframe read from the master cells index .csv"""
 
         # define the path to the index .csv
         master_cells_fp = self.set_fp(prompt)
-        # define the filename for the master expt index
+        # define the DataFrame for the master expt index
         master_cells_df = pd.read_csv(master_cells_fp)
 
         return master_cells_df
-
-    def set_cells_dfs(self, master_cells_df):
-
-        """Return a list of sub-dataframes of the master_cells_df. The sub-dataframes
-           contain data for only one cell according to its sub_coord"""
-
-        # create the cells_dfs list
-        cells_dfs = []
-
-        # add to the cells_dfs a dataframe at index i for every
-        # unique value in the master_cells_df['sub_coord']
-        for i in master_cells_df['sub_coord'].unique():
-            # set the logic mask to a sub-dataframe of master_cells_df containing
-            # only values whose 'sub_coord' value is value
-            print("value is ", i)
-            logic_mask = (master_cells_df['sub_coord'] == i)
-            cells_dfs.append(master_cells_df[logic_mask])
-            print("cells_dfs is now %d elements long" % len(cells_dfs))
-
-        return cells_dfs
     
-    def set_cell_crop_params(self, image_stack, cells_dfs, cell_sub_coord):
-
-        """ Return and save to the cwd a cropped image of the cell corresponding to
-            cell_sub_coord by making a sub-matrix of the image_stack """
-
-        # set the upper bounds as Y_ub and X_ub. 'Y' and 'X' are currently the lower bounds    
-        cells_dfs[cell_sub_coord]['Y_ub'] = cells_dfs[cell_sub_coord]['Y'] + cells_dfs[cell_sub_coord]['Height']
-        cells_dfs[cell_sub_coord]['X_ub'] = cells_dfs[cell_sub_coord]['X'] + cells_dfs[cell_sub_coord]['Width']
-    
-    def set_cropped_cell_stack(self, image_stack, cells_dfs, cell_sub_coord):
-    
-        """ Return a cropped stack made of the ROIs in cells_dfs """
-
-        y_lb = cells_dfs[cell_sub_coord]['Y']
-        y_ub = cells_dfs[cell_sub_coord]['Y_ub']
-        x_lb = cells_dfs[cell_sub_coord]['X']
-        x_ub = cells_dfs[cell_sub_coord]['X_ub']
+    def set_cell_crop_roi_dfs(self, master_cells_df):
         
-        whole_fov_shape = self.image_stack_dsred[0].shape
-        whole_fov_half_width = whole_fov_shape[1] / 2
-        
-        cropped_image_stack = []
+        """ Return a list of DataFrames, one for each cell. The coordinates in each
+            of these DataFrames will be used to crop from the image stacks in 
+            set_cropped_cell_stack_list() """
+    
+        cell_crop_roi_dfs = []
 
-        # iterate over ROI number
-        for i in range(cells_dfs[cell_sub_coord]['Pos'].index.min(), cells_dfs[cell_sub_coord]['Pos'].index.max() + 1):
+        for cell_index in master_cells_df.index:
 
-            print("Cropping slices with ROI %d of cell %d: " % (i, cell_sub_coord))
+            expt_path = master_cells_df.path[cell_index]
+            expt_date = int(master_cells_df.date[cell_index])
+            expt_type = master_cells_df.expt_type[cell_index]
+            cell_rois_fp = f"{expt_path}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(2)}_crop_rois.zip"
+
+            # cell_rois is an OrderedDict so I split the object up and put it in a dataframe 
+            # to get relevant data out of it
+            cell_rois = read_roi_zip(cell_rois_fp)
+            roi_keys = list(cell_rois.keys())
+
+            frames = [cell_rois[roi_key]['position'] - 1 for roi_key in roi_keys]
+
+            x_lbs = [cell_rois[roi_key]['left'] for roi_key in roi_keys]
+            x_ubs = [cell_rois[roi_key]['left'] + cell_rois[roi_key]['width'] for roi_key in roi_keys]
             
+            # The y crop boundary settings is a bit weird to me because y increases as you move 
+            # down the image, not up.
+            y_ubs = [cell_rois[roi_key]['top'] + cell_rois[roi_key]['height'] for roi_key in roi_keys]            
+            y_lbs = [cell_rois[roi_key]['top'] for roi_key in roi_keys]
+            
+            width = [cell_rois[roi_key]['width'] for roi_key in roi_keys]
+            height = [cell_rois[roi_key]['height'] for roi_key in roi_keys]
 
-            if cells_dfs[cell_sub_coord]['Pos'].index.max() > i >= cells_dfs[cell_sub_coord]['Pos'].index.min():
+            cell_rois_df = pd.DataFrame({'cell_index': cell_index,
+                                         'frame' : frames,
+                                         'x_lb' : x_lbs,
+                                         'y_lb' : y_lbs,
+                                         'x_ub' : x_ubs,
+                                         'y_ub' : y_ubs,
+                                         'width' : width,
+                                         'height' : height})
 
-                first_stack_index = cells_dfs[cell_sub_coord]['Pos'][i] - 1
-                last_stack_index = cells_dfs[cell_sub_coord]['Pos'][i + 1] - 1
+            cell_crop_roi_dfs.append(cell_rois_df)        
 
-                # if true, then this is a single position ROI
-                if (first_stack_index - last_stack_index) == 1:
+        return cell_crop_roi_dfs
+    
+    def set_cell_channel_stacks(self, master_cells_df, cell_index):
 
-                    stack_index = first_stack_index
+        """ Return a list of tf.imread() objects (one for each channel collected in expt)
+            read according to data in the master_cells_df """        
 
-                    print("Cropping stack index %d (single index ROI)" % stack_index)
+        expt_path = master_cells_df.path[cell_index]
+        expt_date = int(master_cells_df.date[cell_index])
+        expt_type = master_cells_df.expt_type[cell_index]
+        xy = str(int(master_cells_df.xy[cell_index]))
+        # Should be the channel names used to create stacks as output
+        # of alignment. Channel names are separated by spaces in master_cells_df
+        self.channel_names = master_cells_df.channels_collected[cell_index].split()
 
-                    source_image = image_stack[stack_index]
-                    cropped_image = source_image[y_lb[i]: y_ub[i], x_lb[i]: x_ub[i]]
-                    
-                    # if the image is on the left side of the fov, then it should be flipped so that
-                    # when it's resized extra pixels will be added on to the side that it's not dividing
-                    # toward (ie pixels are always added to the right side for now, and this flipping loop
-                    # makes it so that the left side is always the side pointing toward the trench)
-                    if x_lb[i] < whole_fov_half_width:
-                        cropped_image = np.flip(cropped_image)                        
-                    else:
-                        pass
-                        
-                    cropped_image_stack.append(cropped_image)                
-
-                elif (first_stack_index - last_stack_index) != 1:                
-                    # iterate over the slices of image_stack between the first two positions
-                    for stack_index in range(first_stack_index, last_stack_index):
-                        # this loop stops just short of last_stack_index, which will be the first index
-                        # of the next ROI loop
-                        print("Cropping stack index %d (multi-index ROI)" % stack_index)
-
-                        source_image = image_stack[stack_index]
-                        cropped_image = source_image[y_lb[i]: y_ub[i], x_lb[i]: x_ub[i]]
-                        
-                        if x_lb[i] < whole_fov_half_width:
-                            cropped_image = np.flip(cropped_image)                        
-                        else:
-                            pass
-                        
-                        cropped_image_stack.append(cropped_image)
-
-                else:
-                    print("Error: Stack index %d may contain multiple ROIs" % first_stack_index)
-
-            # add a cropped stack index at the last position of the image_stack. This may
-            # potentially cause problems if the final stack index is part of a mult-index ROI
-            elif i == cells_dfs[cell_sub_coord]['Pos'].index.max():
-                first_stack_index = cells_dfs[cell_sub_coord]['Pos'][i] - 1
-
-                stack_index = first_stack_index
-
-                print("Cropping stack index %d (final stack index)" % stack_index)
-                source_image = image_stack[stack_index]
-                cropped_image = source_image[y_lb[i]: y_ub[i], x_lb[i]: x_ub[i]]
-                
-                if x_lb[i] < whole_fov_half_width:
-                    cropped_image = np.flip(cropped_image)                        
-                else:
-                    pass
-                
-                cropped_image_stack.append(cropped_image)
-
-            else: 
-                pass
+        # Set a list of paths to the channel stacks
+        channel_stacks_fps = [f"{expt_path}\\{expt_date}_{expt_type}_xy{xy.zfill(2)}_{channel_name}_stack.tif" for channel_name in self.channel_names]
         
-        return cropped_image_stack
+        print(f"Paths to channel stacks for cell {cell_index} found based on master df")
+        # Let the user know which stacks were read
+        for fp in channel_stacks_fps:
+            print(fp)
+            
+        # Set a list of the actual channel stack imread() objects
+        cell_channel_stacks = [tf.imread(filepath) for filepath in channel_stacks_fps]
+        
+        return cell_channel_stacks
     
-    def set_slice_shapes_array(self, cropped_stack):
+    def set_cell_cropped_stacks_dict(self, master_cells_df, cell_rois_dfs, cell_index):
 
-        """ Return a np.array() containing the shape of each slice in
-            cropped_stack. For example, slice_shapes_array[:, 0] is a 
-            list of the heights of each slice. """
+        cell_rois_df = cell_rois_dfs[cell_index]
+        channel_stacks = self.set_cell_channel_stacks(master_cells_df, cell_index)
+        
+        cell_cropped_channels_list = []        
+        for channel_stack in channel_stacks:
 
-        cropped_stack = cropped_stack.copy()
-        slice_shapes_list = []
+            whole_fov_shape = channel_stack[0].shape
+            whole_fov_half_width = whole_fov_shape[1] / 2
 
-        for i in range(0, len(cropped_stack)):
-            # Create a list of tuples, one tuple for each slice, where
-            # the first element of the tuple is the height (# rows)
-            # and the second element is width (# columns) of that slice
+            cell_crop_stack = []
 
-            slice_shapes_list.append(cropped_stack[i].shape)
-        # convert the list of tuples into a 2d np.array() object
-        slice_shapes_array = np.array(slice_shapes_list, dtype='uint16')
+            # Iterate over each frame number that will be in the final cropped stack
+            j = 0
+            for frame_index in range(0, cell_rois_df.frame.max()+1):
 
-        return slice_shapes_array
+                # if the current frame_index has an roi assigned, use
+                # that roi to crop for that frame
+                if frame_index in cell_rois_df.frame.values:
 
+                    print(f"Frame {frame_index} has an roi assigned")
 
-    def set_max_dims(self, slice_shapes_array):
+                    y_lb = cell_rois_df.y_lb[j]
+                    y_ub = cell_rois_df.y_ub[j]
+                    x_lb = cell_rois_df.x_lb[j]
+                    x_ub = cell_rois_df.x_ub[j]
 
-        """ Return a tuple which is (max height in slice_shapes_array, max width in slice_shapes_array)"""
+                    print(f"Cropping cell {cell_index} frame {frame_index} with parameters x{x_lb},{x_ub} and y{y_lb},{y_ub}")
 
-        # maximum value in the heights column
-        height_max = slice_shapes_array[:, 0].max()
-        # maximum value in the widths column
-        width_max = slice_shapes_array[:, 1].max()
+                    j += 1
 
-        print("Largest slice in stack is %d rows by %d columns" % (height_max, width_max))
+                    source_image = channel_stack[frame_index]
+                    cropped_image = source_image[y_lb: y_ub, x_lb: x_ub]
 
-        return (height_max, width_max)
+                    cell_crop_stack.append(cropped_image)
+
+                elif frame_index not in cell_rois_df.frame.values:
+
+                    source_image = channel_stack[frame_index]
+                    cropped_image = source_image[y_lb: y_ub, x_lb: x_ub]
+
+                    print(f"Cropping cell {cell_index} frame {frame_index} with parameters x: ({x_lb},{x_ub}) and y: ({y_lb},{y_ub})")
+
+                    cell_crop_stack.append(cropped_image)
+
+            cell_cropped_channels_list.append(cell_crop_stack)
+            
+        self.cell_cropped_channels_dict = dict(zip(self.channel_names, cell_cropped_channels_list))
+        
+        return self.cell_cropped_channels_dict
     
-    def set_slice_offsets(self, cropped_stack, slice_shapes_array, height_max, width_max):
-    
-        """ Return a tuple which is (list of height_max - slice_shapes_array[:, 0],
-            list of width_max - slice_shapes_array[:, 1]) """
-
-        # define the differences in height and width between each slice and the maxima
-
-        slice_height_offsets = []
-        slice_width_offsets = []
-
-        for i in range(0, len(cropped_stack)):
-
-            slice_height_offsets.append(height_max - slice_shapes_array[i, 0])
-            slice_width_offsets.append(width_max - slice_shapes_array[i, 1])
-
-        return (slice_height_offsets, slice_width_offsets)
-    
-    def set_resized_stack(self, cropped_stack, slice_height_offsets, slice_width_offsets):
-    
-        """ Return the cropped_stack with added zeros to make each slice the same 
-            size as the largest slice in the stack """
-
-        resized_stack = []
-
-        for i in range(0, len(cropped_stack)):
-
-            image = cropped_stack[i]
-            resized_image = image.copy()
-            image_h_offset = slice_height_offsets[i]
-            image_w_offset = slice_width_offsets[i]
-
-            h_filler_value = resized_image[-1, :].min()
-            h_filler = np.full((image_h_offset, resized_image.shape[1]), h_filler_value, dtype='uint16')
-            resized_image = np.append(resized_image, h_filler, axis=0)
-
-            w_filler_value = resized_image[:, -1].min()
-            w_filler = np.full((resized_image.shape[0], image_w_offset), w_filler_value, dtype='uint16')
-            resized_image = np.append(resized_image, w_filler, axis=1)
-
-            resized_stack.append(resized_image)
-
-        return resized_stack
-    
-    def set_min_thresholded_stack(self, resized_stack, plot_results):
-    
-        """ Return a minimum thresholded version of resized_stack. Note that the returned 
-            image is a matrix of booleans, not integers. The stack can be converted to 
-            integers using skimage.io.img_as_uint. plot_results is a boolean for whether to 
-            plot the results of thresholding for quality control. I typically set this to False.
-            Cell area in the returned stack is True, everywhere else is False. """
-
+    def add_cell_otsu_thresholded_stack(self):
+        
+        """ Return nothing. Add the otsu thresholded cropped channel stack to the 
+            cell_cropped_channels_ditc, this channel is specified on 
+            instantiation of the Cell_Stacks class. """
+        
+        print("Applying otsu threshold")
+        
+        # Set cell_crop_stack to the stack specified on Cell_Stack instantiation
+        # as the channel to use for thresholding
+        cell_crop_stack = self.cell_cropped_channels_dict[self.threshold_channel]
+        
         thresholded_stack = []
 
-        for i in range(0, len(resized_stack)):
+        for i in range(0, len(cell_crop_stack)):
 
-            print("Applying minimum threshold to image %s of %s" % (i, len(resized_stack)-1))
-
-            image = resized_stack[i]
-            thresh = threshold_minimum(image)
-            binary = image > thresh
+            image = cell_crop_stack[i]
+            threshold_value = threshold_otsu(image)
+            binary = image > threshold_value
 
             # add fresh binary image to stack
-            thresholded_stack.append(binary)
-
-            if plot_results == True:    
-
-                fig, axes = plt.subplots(ncols=2, figsize=(8, 3))
-                ax = axes.ravel()
-
-                ax[0].imshow(image, cmap=plt.cm.gray)
-                ax[0].set_title('Original image')
-
-                ax[1].imshow(binary, cmap=plt.cm.gray)
-                ax[1].set_title('Minimum Threshold')
-
-                for a in ax:
-                    a.axis('off')
-
-                plt.show()
-
-            else: 
-                pass
-
-        return thresholded_stack
+            thresholded_stack.append(img_as_uint(binary))
+            
+        thresh_key = f'{self.threshold_channel}_otsu'
+        self.cell_cropped_channels_dict[thresh_key] = thresholded_stack
     
-    def set_otsu_thresholded_stack(self, resized_stack, plot_results):
+    def set_resized_cell_cropped_channels_dict(self, cell_cropped_channels_dict):
+        
+        """ Return a dictionary of channel stacks resized so that each frame of 
+            the stack is the same dimensions as the largest frame. This is necessary
+            for saving the cell stack. """
+        
+        channel_keys = list(cell_cropped_channels_dict.keys())
+        # Set the cropped stack that will be used as a reference for shape for this cell
+        cropped_stack = cell_cropped_channels_dict[channel_keys[0]]
+
+        # Set an array of shapes for each frame in the cell crop
+        frame_shapes_list = [frame.shape for frame in cropped_stack]
+        frame_shapes_array = np.array(frame_shapes_list, dtype='uint16')
+
+        # Set max height in each dimension (y and x or height and width)
+        max_height = frame_shapes_array[:, 0].max()
+        print(f'max height = {max_height}')
+        max_width = frame_shapes_array[:, 1].max()
+        print(f'max widht = {max_width}')
+
+        # Set two lists of offsets telling you how each frame differs
+        # from the shape of the max frame
+        frame_height_offsets = []
+        for frame_height in frame_shapes_array[:, 0]:
+
+            height_offset = max_height - frame_height
+            frame_height_offsets.append(height_offset)
+
+        frame_width_offsets = []
+        for frame_width in frame_shapes_array[:, 1]:
+
+            width_offset = max_width - frame_width
+            frame_width_offsets.append(width_offset)
+
+        resized_channels = []
+        for channel_key in channel_keys:
+            # iterate through the cropped stack for each channel
+            cropped_stack = cell_cropped_channels_dict[channel_key]
+
+            # Iterate through each frame of the cropped stack and resize it
+            # to whatever max dimensions are for this cell stack
+            resized_cropped_stack = []
+            for i in range(0, len(cropped_stack)):
+                h_offset = frame_height_offsets[i]
+                w_offset = frame_width_offsets[i]
+                frame = cropped_stack[i].copy()
+
+                h_filler_value = frame[-1, :].min()
+                h_filler_array = np.full((h_offset, frame.shape[1]), h_filler_value, dtype='uint16')
+                resized_frame = np.append(frame, h_filler_array, axis=0)
+
+                w_filler_value = frame[:, -1].min()
+                w_filler_array = np.full((frame.shape[0], w_offset), w_filler_value, dtype='uint16')
+                resized_frame = np.append(frame, w_filler_array, axis=1)
+
+                resized_cropped_stack.append(resized_frame)
+
+            resized_channels.append(resized_cropped_stack)
+        print(channel_keys)
+        cell_resized_channels_dict = dict(zip(channel_keys, resized_channels))
+        return cell_resized_channels_dict
     
-        """ Return a otsu thresholded version of resized_stack. Note that the returned 
-            image is a matrix of booleans, not integers. The stack can be converted to 
-            integers using skimage.io.img_as_uint. plot_results is a boolean for whether to 
-            plot the results of thresholding for quality control. I typically set this to False.
-            Cell area in the returned stack is True, everywhere else is False. """
-
-        thresholded_stack = []
-
-        for i in range(0, len(resized_stack)):
-
-            print("Applying otsu threshold to image %s of %s" % (i, len(resized_stack)-1))
-
-            image = resized_stack[i]
-            thresh = threshold_otsu(image)
-            binary = image > thresh
-
-            # add fresh binary image to stack
-            thresholded_stack.append(binary)
-
-            if plot_results == True:    
-
-                fig, axes = plt.subplots(ncols=2, figsize=(8, 3))
-                ax = axes.ravel()
-
-                ax[0].imshow(image, cmap=plt.cm.gray)
-                ax[0].set_title('Original image')
-
-                ax[1].imshow(binary, cmap=plt.cm.gray)
-                ax[1].set_title('Otsu Threshold')
-
-                for a in ax:
-                    a.axis('off')
-
-                plt.show()
-
-            else: 
-                pass
-
-        return thresholded_stack
-
-    def set_cropped_stacks(self, cell_index, cells_dfs):
-
-        """ Return a stack cropped from the source dsred, yfp, and brightfield stacks
-            according to the cell index parameters found in master index .csv (this gets 
-            read into a pd.DataFrame at instantiation of Cell_Stacks() """  
-
-        self.set_cell_crop_params(self.image_stack_dsred, cells_dfs, cell_index)
-        self.cropped_stack_dsred = self.set_cropped_cell_stack(self.image_stack_dsred, cells_dfs, cell_index)
-        self.cropped_stack_yfp = self.set_cropped_cell_stack(self.image_stack_yfp, cells_dfs, cell_index)
-        self.cropped_stack_bf = self.set_cropped_cell_stack(self.image_stack_bf, cells_dfs, cell_index)
-
-        return self.cropped_stack_dsred, self.cropped_stack_yfp, self.cropped_stack_bf
-
-
-    def set_cropped_cells_lists(self, cells_dfs):
-        
-        """ Return three lists - dsred_stacks, yfp_stacks_, and bf_stacks,
-            with each element being the cropped stack of that cell """
-        
-        cropped_dsred_stacks = []
-        cropped_yfp_stacks = []
-        cropped_bf_stacks = []
-        
-        # remember that cells_dfs is a list of dfs, one for each
-        # unique cell in the master_cells_dfs
-        for cell_index in range(0, len(cells_dfs)):
-            
-            print("Setting cropped stacks for each channel (dsred, yfp, bf) of cell %s" % cell_index)
-            
-            cropped_dsred_stack, cropped_yfp_stack, cropped_bf_stack = self.set_cropped_stacks(cell_index, cells_dfs)
-            
-            cropped_dsred_stacks.append(cropped_dsred_stack)
-            cropped_yfp_stacks.append(cropped_yfp_stack)
-            cropped_bf_stacks.append(cropped_bf_stack)
-            
-        return cropped_dsred_stacks, cropped_yfp_stacks, cropped_bf_stacks
-            
-    def set_resized_cells_lists(self, cropped_dsred_stacks, cropped_yfp_stacks, cropped_bf_stacks, cells_dfs):
-        
-        """ Return three lists - dsred_stacks, yfp_stacks_, and bf_stacks,
-            wit each element being the resized stack of that cell """
-        
-        resized_dsred_stacks = []
-        resized_yfp_stacks = []
-        resized_bf_stacks = []
-        
-        # remember that cells_dfs is a list of dfs, one for each
-        # unique cell in the master_cells_dfs
-        for cell_index in range(0, len(cells_dfs)):
-            
-            print("Setting resized stacks for each channel (dsred, yfp, bf) of cell %s" % cell_index)
-            
-            # use the cropped_dsred_stack of current cell to define slice shapes
-            slice_shapes_array = self.set_slice_shapes_array(cropped_dsred_stacks[cell_index])
-            height_max, width_max = self.set_max_dims(slice_shapes_array)
-            
-            # the slice shapes offsets
-            slice_height_offsets, slice_width_offsets = self.set_slice_offsets(cropped_dsred_stacks[cell_index],
-                                                                             slice_shapes_array,
-                                                                             height_max,
-                                                                             width_max)
-            
-            resized_dsred_stack = self.set_resized_stack(cropped_dsred_stacks[cell_index], slice_height_offsets, slice_width_offsets)
-            resized_yfp_stack = self.set_resized_stack(cropped_yfp_stacks[cell_index], slice_height_offsets, slice_width_offsets)
-            resized_bf_stack = self.set_resized_stack(cropped_bf_stacks[cell_index], slice_height_offsets, slice_width_offsets)
-            
-            resized_dsred_stack = io.concatenate_images(resized_dsred_stack)
-            resized_yfp_stack = io.concatenate_images(resized_yfp_stack)
-            resized_bf_stack = io.concatenate_images(resized_bf_stack)
-            
-            resized_dsred_stacks.append(resized_dsred_stack)
-            resized_yfp_stacks.append(resized_yfp_stack)
-            resized_bf_stacks.append(resized_bf_stack)
-            
-        return resized_dsred_stacks, resized_yfp_stacks, resized_bf_stacks
-
-    def set_min_thresholded_cells_lists(self, resized_dsred_stacks, cells_dfs):
-        
-        """ Return a list of min thresholded stacks made from the resized_stack 
-            list passed to this function """
-        
-        min_thresholded_dsred_stacks = []
-        
-        # remember that cells_dfs is a list of dfs, one for each
-        # unique cell in the master_cells_dfs
-        for cell_index in range(0, len(cells_dfs)):
-            print("Determining min threshold for resized dsred stack of cell %s" %  cell_index)
-            
-            resized_stack = resized_dsred_stacks[cell_index]
-            thresholded_stack = self.set_min_thresholded_stack(resized_stack, plot_results=False)
-            final_thresholded_stack = io.concatenate_images(img_as_uint(thresholded_stack))
-            
-            min_thresholded_dsred_stacks.append(final_thresholded_stack)
-            
-            #now save the stacks
-            cell_df = cells_dfs[cell_index]
-            
-            path = str(cell_df['path'][cell_df.index.min()] + "\\")
-            expt_date = cell_df['date'][cell_df.index.min()]
-            expt_type = cell_df['expt_type'][cell_df.index.min()]
-            xy = cell_df['xy'][cell_df.index.min()]
-            sub_coord = cell_df['sub_coord'][cell_df.index.min()]
-            
-            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, xy, sub_coord))
-            io.imsave(path + stack_title + "dsred_min_thresh.tif", final_thresholded_stack)
-            
-        return min_thresholded_dsred_stacks
-
-    def set_otsu_thresholded_cells_lists(self, resized_dsred_stacks, cells_dfs):
-        
-        """ Return a list of otsu thresholded stacks made from the resized_stack 
-            list passed to this function """
-        
-        otsu_thresholded_dsred_stacks = []
-        
-        # remember that cells_dfs is a list of dfs, one for each
-        # unique cell in the master_cells_dfs
-        for cell_index in range(0, len(cells_dfs)):
-            print("Determining otsu threshold for resized dsred stack of cell %s" %  cell_index)
-            
-            resized_stack = resized_dsred_stacks[cell_index]
-            thresholded_stack = self.set_otsu_thresholded_stack(resized_stack, plot_results=False)
-            final_thresholded_stack = io.concatenate_images(img_as_uint(thresholded_stack))
-            
-            otsu_thresholded_dsred_stacks.append(final_thresholded_stack)
-            
-            #now save the stacks
-            cell_df = cells_dfs[cell_index]
-            
-            path = str(cell_df['path'][cell_df.index.min()] + "\\")
-            expt_date = cell_df['date'][cell_df.index.min()]
-            expt_type = cell_df['expt_type'][cell_df.index.min()]
-            xy = cell_df['xy'][cell_df.index.min()]
-            sub_coord = cell_df['sub_coord'][cell_df.index.min()]
-            
-            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, xy, sub_coord))
-            io.imsave(path + stack_title + "dsred_otsu_thresh.tif", final_thresholded_stack)
-            
-        return otsu_thresholded_dsred_stacks
-        
-
-    def save_resized_stacks(self, resized_dsred_stacks, resized_yfp_stacks, resized_bf_stacks, cells_dfs):
-        
-        """ Return nothing, save all cropped and resized stacks in the directory
-            specified in the master cells index """
-        
-        for cell_index in range(0, len(cells_dfs)):
-            
-            dsred_stack = resized_dsred_stacks[cell_index]
-            yfp_stack = resized_yfp_stacks[cell_index]
-            bf_stack  = resized_bf_stacks[cell_index]
-            
-            cell_df = cells_dfs[cell_index]
-            
-            path = str(cell_df['path'][cell_df.index.min()] + "\\")
-            expt_date = cell_df['date'][cell_df.index.min()]
-            expt_type = cell_df['expt_type'][cell_df.index.min()]
-            xy = cell_df['xy'][cell_df.index.min()]
-            sub_coord = cell_df['sub_coord'][cell_df.index.min()]
-        
-            
-            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, xy, sub_coord))
-            
-            print("Saving resized stacks for cell %s in %s" % (cell_index, path))
-            io.imsave(path + stack_title + "dsred.tif", dsred_stack)
-            io.imsave(path + stack_title + "yfp.tif", yfp_stack)
-            io.imsave(path + stack_title + "bf_stack.tif", bf_stack)
-            
-    def save_min_thresh_stacks(self, resized_dsred_stacks, resized_yfp_stacks, resized_bf_stacks):
-        
-        """ Return nothing, save all cropped, resized, and thresholded stacks in the directory 
-            specified in the master cells index """
+def save_cell_stacks():
     
+    threshold_channel = input("Choose channel to use for thresholding: ")
+    cs = Cell_Stack(threshold_channel=threshold_channel)
     
+    for cell_index in cs.master_cells_df.sub_coord:    
+    
+        # Run all the cropping and processing method of Cell_Stack on the cell
+        # with cell_index
+        cell_rois_dfs = cs.set_cell_crop_roi_dfs(cs.master_cells_df)
+        cell_cropped_channels_dict = cs.set_cell_cropped_stacks_dict(cs.master_cells_df, cell_rois_dfs, cell_index)
+        cs.add_cell_otsu_thresholded_stack()
+        resized_channels_dict = cs.set_resized_cell_cropped_channels_dict(cs.cell_cropped_channels_dict)
+
+        # Save each stack 
+        expt_path = cs.master_cells_df.path[cell_index]
+        expt_date = int(cs.master_cells_df.date[cell_index])
+        expt_type = cs.master_cells_df.expt_type[cell_index]
+        xy = str(int(cs.master_cells_df.xy[cell_index]))
+
+        for channel_name, stack in resized_channels_dict.items():
+            filename = f'{expt_date}_{expt_type}_xy{xy}_cell{cell_index}_{channel_name}_stack.tif'
+            save_path = f'{expt_path}//{filename}'
+
+            imsave(save_path, concatenate_images(stack))

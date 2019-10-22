@@ -1,0 +1,4 @@
+﻿date,expt_type,channels_collected,collection_frequency(min),exp,n_frames,duration,[tetracycline] (uM),tetracycline_perfusion_frames,genetic_background,construct,expr_type,path,xy,sub_coord,death,sen_start,sen_end,note,late_daughter_shape
+20191008,byc,bf yfp dsred,10,100 400 400,102,17,250,1-102,pdr5delta,pJC010_NS,CEN4 Plasmid,C:\Users\John Cooper\Projects\alignment\roi_management\roi_management_3\20191008_example_data_directory,4,0,FALSE,FALSE,FALSE,FALSE,FALSE
+20191008,byc,bf yfp dsred,10,100 400 400,102,17,250,1-102,pdr5delta,pJC010_NS,CEN4 Plasmid,C:\Users\John Cooper\Projects\alignment\roi_management\roi_management_3\20191008_example_data_directory,4,1,FALSE,FALSE,FALSE,FALSE,FALSE
+20191008,byc,bf yfp dsred,10,100 400 400,102,17,250,1-102,pdr5delta,pJC010_NS,CEN4 Plasmid,C:\Users\John Cooper\Projects\alignment\roi_management\roi_management_3\20191008_example_data_directory,14,2,FALSE,FALSE,FALSE,FALSE,FALSE
