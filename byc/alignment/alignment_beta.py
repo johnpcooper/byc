@@ -224,8 +224,9 @@ def align_images(fov_path, channel_names):
             # in the data. 
             translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
         except:
-        	# rotated_images[0] is first image if there is only one channel in the dataset
+            # rotated_images[0] is first image if there is only one channel in the dataset
             translational_offsets.append(_determine_registration_offset(rotated_images[0], rotated_images[i]))
+        print(f"Translational offset: {translational_offsets[i]}")
         
     # now translate the images
     translated_images = []
@@ -237,27 +238,28 @@ def align_images(fov_path, channel_names):
         # Choose a good translational offset to use. Because sometimes feature alignment will offset
         # the frame by about a channel width, I'm putting this loop in to check whether the current
         # translational offset is larger than the one before it by about a channel width. 
-        if abs(translational_offsets[i][0] - translational_offsets[i-1][0]) < 30:
+
+        if i > 0:
+            print(f"Difference between this and last offset: {abs(translational_offsets[i][0] - translational_offsets[i-1][0])}")
+            if abs(translational_offsets[i][0] - translational_offsets[i-1][0]) < 30:
             # translationaol_offset only gets reset on frames where the offset height is less
-            # than 30 pixels. 
-            last_good_translational_offset = translational_offsets[i]
-            translational_offset = translational_offsets[i]
+                # than 30 pixels. 
+                translational_offset = translational_offsets[i]
 
-        elif abs(translational_offsets[i][0] - translational_offsets[i-1][0]) > 30:
-            # If translational offset is much larger than the previous offset, use the last good
-            # translational offset
-            translational_offset = last_good_translational_offset
-        
-        translated_channels_i = []
+            else:
+                pass
+            
+            translated_channels_i = []
+            try: # Works if there is more than one channel in dataset
+                for j in range(0, len(images[0])):
+                    translated_channels_i.append(translate_image(rotated_images[i][j], translational_offset))
+            except: # Works if one channel in dataset
+                translated_channels_i = (translate_image(rotated_images[i], translational_offset))
 
-        try: # Works if there is more than one channel in dataset
-            for j in range(0, len(images[0])):
-                translated_channels_i.append(translate_image(rotated_images[i][j], translational_offset))
-        except: # Works if one channel in dataset
-            translated_channels_i = (translate_image(rotated_images[i], translational_offset))
+            translated_images.append(translated_channels_i)
+        else:
+            print("First image, no need to compare offsets")  
 
-        translated_images.append(translated_channels_i)
-    
     # make a dictionary to hold images for each channel
     keys = channel_names
     values = []
