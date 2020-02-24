@@ -12,13 +12,13 @@ def set_paths():
     # Choose the directory holding all the fields of view that you'll align
     root = tk.Tk()
     input_path = dia.askdirectory(parent=root,
-                                 title='Choose the directory holding the experiment you want to align')
+                                  title='Choose the directory holding the experiment you want to align')
     root.destroy()
 
     # ask the user where they would like to save the output stacks
     root = tk.Tk()
     output_path = dia.askdirectory(parent=root,
-                            title='Choose the directory where you want to save aligned images')
+                                   title='Choose the directory where you want to save aligned images')
     root.destroy()
     
     return input_path, output_path

@@ -7,6 +7,7 @@ from skimage.feature.register_translation import _upsampled_dft
 from skimage.transform import AffineTransform
 import skimage.io as io
 from skimage.util import img_as_uint
+import random
 
 from scipy import ndimage
 import numpy as np
@@ -179,7 +180,8 @@ def align_images(fov_path, channel_names):
     rotational_offsets = []
     # create an index variable to print so the user can see progress
     index = 0
-    for image in images:
+    # Calculate rotational offset for a subsample of 3 bf images in the stack
+    for image in random.sample(images, 3):
         index = index + 1
         print("Determining rotation offset %d of %d" % (index, len(images)))
         vis_channel = image[0]
@@ -190,7 +192,12 @@ def align_images(fov_path, channel_names):
             # do this if the image is a single channel
             rotational_offsets.append(_determine_rotation_offset(image))
 
-    # create a list of rotationally aligned images rotated according to the rotational_offsets list
+    # set rotational offsets to the median 
+    sample_rt_offsets = np.asarray(rotational_offsets)
+    sample_rt_offests_md = np.median(sample_rt_offsets)
+    final_rt_offests_arr = np.full(shape=(len(images)), fill_value=(sample_rt_offests_md))
+
+    # create a list of rotationally aligned images rotated according to the final_rt_offsets_arr array
     rotated_images = []
     index = 0 # again, progress bar index
     for i in range(0, len(images)):
@@ -204,10 +211,10 @@ def align_images(fov_path, channel_names):
 
         try:
             for j in range(0, len(channels_i)):
-                rotated_channels_i.append(rotate_image(channels_i[j], rotational_offsets[i]))
+                rotated_channels_i.append(rotate_image(channels_i[j], final_rt_offests_arr[i]))
         except:
             # again, need to do this if single channel dataset
-            rotated_channels_i = rotate_image(images[i], rotational_offsets[i])
+            rotated_channels_i = rotate_image(images[i], final_rt_offests_arr[i])
 
         rotated_images.append(rotated_channels_i)
     
@@ -220,13 +227,10 @@ def align_images(fov_path, channel_names):
         print("Determining registration offset %d of %d" % (index, len(images)))
         try:
             # align based on feautres of image 0, I think I should change this to align
-            # to image i-1. It's rotated_images[0][0] if there is more than one channel
-            # in the data. 
+            # to image i-1
             translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
         except:
-            # rotated_images[0] is first image if there is only one channel in the dataset
             translational_offsets.append(_determine_registration_offset(rotated_images[0], rotated_images[i]))
-        print(f"Translational offset: {translational_offsets[i]}")
         
     # now translate the images
     translated_images = []
@@ -234,32 +238,17 @@ def align_images(fov_path, channel_names):
     for i in range(0, len(translational_offsets)):
         index += 1
         print("Translating image %d of %d" % (index, len(images)))
+        
+        translated_channels_i = []
 
-        # Choose a good translational offset to use. Because sometimes feature alignment will offset
-        # the frame by about a channel width, I'm putting this loop in to check whether the current
-        # translational offset is larger than the one before it by about a channel width. 
+        try:
+            for j in range(0, len(images[0])):
+                translated_channels_i.append(translate_image(rotated_images[i][j], translational_offsets[i]))
+        except:
+            translated_channels_i = (translate_image(rotated_images[i], translational_offsets[i]))
 
-        if i > 0:
-            print(f"Difference between this and last offset: {abs(translational_offsets[i][0] - translational_offsets[i-1][0])}")
-            if abs(translational_offsets[i][0] - translational_offsets[i-1][0]) < 30:
-            # translationaol_offset only gets reset on frames where the offset height is less
-                # than 30 pixels. 
-                translational_offset = translational_offsets[i]
-
-            else:
-                pass
-            
-            translated_channels_i = []
-            try: # Works if there is more than one channel in dataset
-                for j in range(0, len(images[0])):
-                    translated_channels_i.append(translate_image(rotated_images[i][j], translational_offset))
-            except: # Works if one channel in dataset
-                translated_channels_i = (translate_image(rotated_images[i], translational_offset))
-
-            translated_images.append(translated_channels_i)
-        else:
-            print("First image, no need to compare offsets")  
-
+        translated_images.append(translated_channels_i)
+    
     # make a dictionary to hold images for each channel
     keys = channel_names
     values = []
