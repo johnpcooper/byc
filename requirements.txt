@@ -1,0 +1,13 @@
+numpy
+pandas
+scikit-image
+scipy
+tifffile
+Tk
+matplotlib
+read_roi
+random
+
+
+
+
