@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import tkinter as tk
 import tkinter.filedialog as tkdia
+from functools import reduce
 
 
 def select_files(prompt):
