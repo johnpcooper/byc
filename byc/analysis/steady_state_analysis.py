@@ -1,12 +1,16 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+from scipy.stats import shapiro
+import matplotlib.pyplot as plt
+import matplotlib
 import tkinter as tk
 import tkinter.filedialog as tkdia
 
-def select_files(message):
+
+def select_files(prompt):
     # return a list of files that user selects in the dialogue box
     root = tk.Tk()
-    files = tkdia.askopenfilenames(parent=root, title=message)
+    files = tkdia.askopenfilenames(parent=root, title=prompt)
     files_list = root.tk.splitlist(files)
     root.destroy()
     return sorted(files_list)
@@ -14,133 +18,125 @@ def select_files(message):
 def select_file():
     # return a list of files that user selects in the dialogue box
     root = tk.Tk()
-    file_path = tkdia.askopenfilename(parent=root, title='Choose files')
+    file_path = tkdia.askopenfilename(parent=root, title='Choose file')
     root.destroy()
     return file_path
 
-def make_dfs(fns):
+def make_dfs(prompt):
     # return a list of dataframes created by reading the list of filenames
     # that you pass the function
+    fns = select_files(prompt)
     dfs = []
     for i in range(0, len(fns)):
         dfs.append(pd.read_csv(fns[i]))
-    return dfs
+    return dfs, fns
 
-def calc_bg_pix(df):
-    # return a background value for an individual df
+def set_steady_state_dfs_list(master_df, max_n_fovs):
     
-    # calculate total intensities of bg and cells
-    bg_I = df.iloc[-1]['IntDen']
-    cells_I = df.iloc[0:-1]['IntDen'].sum()
+    """ Return a list of Dataframes, one for each distinct condition in the dataset
+        e.g. plasmid, clone, genetic background """
     
-    bg_A = df.iloc[-1]['Area']
-    cells_A = df.iloc[0:-1]['Area'].sum()
+    dfs_list = []
+    for dataset_index in range(0, len(master_df)):
     
-    bg_final = (bg_I - cells_I) / (bg_A - cells_A)
-    return bg_final
+        info = master_df.loc[dataset_index, :]
+        channel_names = info.fluor_channel_names.split()
+        fovs = list(np.arange(1, max_n_fovs+1))
 
-def calc_bg_list_pix(dfs):
-    # return a list of background values for each df
-    # in the list of dfs passed to the function
-    
-    bg_list = []
-    for i in range(0, len(dfs)):
-        bg_list.append(calc_bg_pix(dfs[i]))
+        fov_dfs_list = []
+        for fov in fovs:
+            channel_dfs = []
+            try: # Find all the fov csv files that match the conditions specified in info.
+                for channel_name in channel_names:
+
+                    filename = f'{info.path}\\{info.expt_date}_{info.plasmid}_{info.genotype}_C{info.clone}_00{fov}_{channel_name}.csv'
+                    channel_df = pd.read_csv(filename)
+                    channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
+                    channel_dfs.append(channel_df)
+
+                fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
+                fov_dfs_list.append(fov_merged_df)
+            except:
+                pass
+                #print(f"No FOV {fov} for dataset {dataset_index}")
+            
+        try: # this try except statement assumes that this will only fail if pd.concat has
+             # 0 objects to concatenate and this is because no files were found
+            final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
+        except:
+            print(f"No file at : {filename}")
+        # add identifying information to final dataset:
+        for i in range(0, len(master_df.columns)):
+            column_name = list(master_df.columns)[i]
+            value = info[i]
+            final_df.loc[:, f'{column_name}'] = value
         
-    return bg_list
-
-def calc_bg_um(df):
-    # return a background value for an individual df
-    
-    # calculate total intensities of bg and cells
-    bg_I = df.iloc[-1]['IntDen']
-    cells_I = df.iloc[0:-1]['IntDen'].sum()
-    
-    bg_A = df.iloc[-1]['Area']
-    cells_A = df.iloc[0:-1]['Area'].sum()
-    
-    bg_final = (bg_I - cells_I) / (bg_A - cells_A)
-    return bg_final
-
-def calc_bg_list_um(dfs):
-    # return a list of background values for each df
-    # in the list of dfs passed to the function
-    
-    bg_list = []
-    for i in range(0, len(dfs)):
-        bg_list.append(calc_bg_um(dfs[i]))
+        dfs_list.append(final_df)
         
-    return bg_list
+    return dfs_list
 
-def add_norm_col(df, bg):
-    # add a column to the df passed to this function that contains
-    # bg normalized mean I values
+def set_flow_cyto_dfs_list(master_df):
     
-    df['norm_mean'] = df['Mean'] - bg
+    """ Return a list of Dataframes, one for each distinct condition in the dataset
+        e.g. plasmid, clone, genetic background """
     
-def normalize(dfs, bgs):
-    for i in range(0, len(dfs)):
-        add_norm_col(dfs[i], bgs[i])
-
-def drop_bg(df):
-    # return the input df with the last row removed
-    df_pruned = df.drop(len(df) - 1)
-    return df_pruned
-
-def drop_all_bgs(dfs):
-    # return the input dfs with their last row removed
+    n_datasets_found = 0
+    dfs_list = []
+    for dataset_index in range(0, len(master_df)):
     
-    pruned_dfs = []
-    for i in range(0, len(dfs)):
-        dropped = drop_bg(dfs[i])
-        pruned_dfs.append(dropped)
+        info = master_df.loc[dataset_index, :]
+        channel_names = info.fluor_channel_names.split()
+        dataset_id = f'{info.plasmid}_{info.genotype}_{info.clone}'
         
-    return pruned_dfs
+        try:
+            filepath = f'{info.path}\\{info.file_name}'
+            df = pd.read_csv(filepath)
+            print(f"Found .csv for {dataset_id} at {filepath}\n")
+            n_datasets_found += 1
+            
+        except:                
+            print(f"No file found at {filename} for dataset {dataset_id}\n")
 
-def run_pix(channel_1, channel_2):
-    
-    """Return two dataframes (channel_1_zipper_dfs and channel_2_zipped_dfs).
-       These dfs are read from csvs chosen by the user. """
-    
-    if type(channel_1) and type(channel_2) == str:
+        # add identifying information to final dataset:
+        for i in range(0, len(master_df.columns)):
+            column_name = list(master_df.columns)[i]
+            value = info[i]
+            df.loc[:, f'{column_name}'] = value
         
-        channel_1_fns = select_files("Choose {} files for this condition".format(channel_1))
-        channel_2_fns = select_files("Choose {} files for this condition".format(channel_2))
+        dfs_list.append(df)
+        
+    if len(dfs_list) != len(master_df):
+        print("WARNING, did not find a .csv for all rows in master_df")
+    else:
+        print("Found .csv for all rows in master_df")
+        
+    return dfs_list
 
-        channel_1_dfs = make_dfs(channel_1_fns)
-        channel_2_dfs = make_dfs(channel_2_fns)
-        # calclucate a background value (defined in function above)
-        # for each FOV's dataframe
-        channel_1_bgs = calc_bg_list_pix(channel_1_dfs)
-        channel_2_bgs = calc_bg_list_pix(channel_2_dfs)
-        # apply the backgorund subraction value
-        normalize(channel_1_dfs, channel_1_bgs)
-        normalize(channel_2_dfs, channel_2_bgs)
-    
-    channel_1_pruned_dfs = drop_all_bgs(channel_1_dfs)
-    channel_2_pruned_dfs = drop_all_bgs(channel_2_dfs)
-    
-    channel_1_zipped_dfs = pd.concat(channel_1_pruned_dfs, ignore_index=True)
-    channel_2_zipped_dfs = pd.concat(channel_2_pruned_dfs, ignore_index=True)
-    
-    return (channel_1_zipped_dfs, channel_2_zipped_dfs, channel_1, channel_2)
 
-def finalize_pix(channel_1_name, channel_2_name):
+def set_proportional_weights_by_plasmid(df):
     
-    """ Return a completed df which combines data from channel_1 and channel_2 
-        for a single population of cells from the fovs passed in run_pix """
+    """ Return the dataframe passed to this function with a new column called 'weight'. 
+        The weight for a row (cell) is 1 - the number of cells with that cell's unique
+        plasmid / total number of cells in the data set. 
+        
+        This allows evenly selecting from each plasmid (or potentially other) group 
+        when using df.sample(n=some_number, weights=df.weight). 
+        
+        WARNING: currently this function applies weight by df.index.levels[0]"""
     
-    (channel_1_df, channel_2_df, channel_1_name, channel_2_name) = run_pix(channel_1_name, channel_2_name)
-    
-    df_final = channel_1_df
-    
-    df_final['bg_sub_mean_{}'.format(channel_1_name)] = channel_1_df['norm_mean']
-    df_final['raw_mean_{}'.format(channel_1_name)] = channel_1_df['Mean']
-    df_final['raw_int_{}'.format(channel_1_name)] = channel_1_df['IntDen']
-    
-    df_final['bg_sub_mean_{}'.format(channel_2_name)] = channel_2_df['norm_mean']
-    df_final['raw_mean_{}'.format(channel_2_name)] = channel_2_df['Mean']
-    df_final['raw_int_{}'.format(channel_2_name)] = channel_2_df['IntDen']
-    
-    return df_final
+    df.loc[:, 'weight'] = 0
+
+    for plasmid_level in df.index.levels[0]:
+        print(plasmid_level)
+
+        n_cells = len(df.loc[plasmid_level, :])
+        print(f"Number of cells in {plasmid_level} group = {n_cells}")
+        proportion = n_cells / len(df)
+        print(f"Fraction of all cell in {plasmid_level} = {proportion}")
+        weight = 1 / proportion
+        print(f"weight={weight}")
+        df.loc[plasmid_level, 'weight'] = weight
+        
+    return df
+
 
