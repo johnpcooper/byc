@@ -1,0 +1,26 @@
+expt_date,plasmid,genotype,tail,n_end,tet_concn,clone,path,fluor_channel_names,channel_names,raw_channel_names,note,substrate_ctl
+20200306,pJC030,pdr5d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC030,pdr5d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC030,pdr5d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC030,rpn4d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC030,rpn4d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC030,rpn4d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,yfp rfp
+20200306,pJC041,pdr5d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC041,pdr5d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC041,pdr5d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC041,rpn4d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC041,rpn4d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC041,rpn4d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,yfp rfp,bf yfp rfp,Brightfield YFP RFP,na,rfp yfp
+20200306,pJC051,pdr5d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC051,pdr5d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC051,pdr5d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC051,rpn4d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC051,rpn4d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC051,rpn4d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,pdr5d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,pdr5d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,pdr5d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,rpn4d,NS,UbL,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,rpn4d,NS,UbL,0,2,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,pJC067,rpn4d,NS,UbL,0,3,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp rfp,bf gfp rfp,Brightfield GFP RFP,na,gfp rfp
+20200306,no-plasmid,by4741,na,na,0,1,C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\20200306_pJC030_41_51_67_p_r\data,gfp yfp rfp,bf gfp yfp rfp,Brightfield GFP YFP RFP,na,rfp yfp
