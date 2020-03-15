@@ -1,0 +1,11 @@
+﻿date,expt_type,channels_collected,collection_frequency(min),exp,n_frames,[tetracycline] (uM),tetracycline_perfusion_frames,genetic_background,construct,expr_type,path,xy,sub_coord,death,sen_start,sen_end,note,late_daughter_shape,Pos,dist_from_sen
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,0,FALSE,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,1,291,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,2,228,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,3,261,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,4,102,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,5,233,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,0,6,193,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,1,7,183,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,1,8,159,FALSE,FALSE,FALSE,FALSE,1,0
+20200214,byc,bf yfp dsred,10,100 200 200,346,FALSE,FALSE,by4741,sic1-GFP,integrated,C:\Users\John Cooper\Projects\byc_data\20200214_byc\20200214_byc_sic1_gfp,1,9,137,FALSE,FALSE,FALSE,FALSE,1,0
