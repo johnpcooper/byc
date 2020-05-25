@@ -1,4 +1,4 @@
-import alignment_beta as a
+from byc import alignment_beta as a
 import tifffile as tf
 import tkinter as tk
 import tkinter.filedialog as dia

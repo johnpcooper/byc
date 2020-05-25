@@ -1,4 +1,4 @@
-import segmentation as sm
+from byc import segmentation as sm
 
 def run():
 	

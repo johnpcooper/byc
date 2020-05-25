@@ -48,7 +48,7 @@ def rename_steady_state(max_n_fovs):
 
         info = master_index_df.loc[measurement_index, :]
         source_dir = info.path
-        base_filename = f'{info.expt_date}_{info.plasmid}_{info.genotype}'
+        base_filename = f'{info.expt_date}_{info.plasmid}_{info.genotype}_C{info.clone}'
         print(f'Evaluating data for measurement {base_filename}')
         base_path = f'{source_dir}\\{base_filename}'
 
@@ -152,3 +152,32 @@ def rename_byc():
     
     xy_dir_names = set_xy_dir_names(expt_dir, expt_name)
     reshape_timepoints(xy_dir_names, expt_dir, n_channels)
+
+def set_file_paths(prompt):
+    # create the dialog box and set the fn
+    root = tk.Tk()
+    fps = tkdia.askopenfilenames(parent=root, title=prompt)
+    root.destroy() # very important to destroy the root object, otherwise python 
+    # just keeps running in a dialog box
+
+    return fps # return the path to the file you just selected
+
+def get_dfs_list():
+    """
+    Ask the user to choose a list of .csv files that will be read in as
+    dataframes. Return (the list of dataframes, list of csv paths)
+    """
+    fps = set_file_paths("Choose the .csv files for this expt condition")
+
+    if all(['.csv' == path[-4:] for path in fps]):    
+        cell_trace_dfs_list = []
+        for i in range(0, len(fps)):
+            df = pd.read_csv(fps[i])
+            cell_trace_dfs_list.append(df)
+            
+        return cell_trace_dfs_list, fps
+
+    else:
+        print('Selection included non-csvs, no dfs and paths lists constructed')
+        return None
+

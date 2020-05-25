@@ -1,22 +1,29 @@
-# Writing the setup script: https://docs.python.org/3/distutils/setupscript.html
+# Writing the setup script: https://pythonhosted.org/an_example_pypi_project/setuptools.html
 
-try:
-    from setuptools import setuptools
+import os
+from setuptools import setup, find_packages
 
-except ImportError:
-    from distutils.core import setup
+# Utility function to read the README file.
+# Used for the long_description.  It's nice, because now 1) we have a top level
+# README file and 2) it's easier to type in the README file than to put a raw
+# string in below ...
+def read(fname):
+    return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-config = {
-    'description': 'My Project',
-    'author': 'John Cooper',
-    'url': 'URL to get it at.',
-    'download_url': 'Where to download it.',
-    'author_email': 'johnphilipcooper@gmail.com.',
-    'version': '1.0',
-    'install_requires': ['nose'],
-    'packages': [''],
-    'scripts': [],
-    'project': ''
-}
-
-setup(**config)
+setup(
+    name = "byc",
+    version = "1.0.0",
+    author = "John P. Cooper",
+    author_email = "jpcoope@utexas.edu",
+    description = ("Codebase for analyzing imaging data from budding yeast chemostat"),
+    license = "BSD",
+    keywords = "image processing single cell biochemistry microfluidics imaging",
+    url = "https://github.com/johnpcooper/byc",
+    packages=find_packages(),
+    long_description=read('README.md'),
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Topic :: Utilities",
+        "License :: OSI Approved :: BSD License",
+    ],
+)

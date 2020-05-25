@@ -7,7 +7,6 @@ from skimage.feature.register_translation import _upsampled_dft
 from skimage.transform import AffineTransform
 import skimage.io as io
 from skimage.util import img_as_uint
-import random
 
 from scipy import ndimage
 import numpy as np
@@ -172,82 +171,6 @@ def align_images(fov_path, channel_names):
         image = tf.imread(fov_path + '/%s' % filename)
         images.append(image)
         print(filename)
-
-    # ascertain the number of channels in the image, assume that 
-    # channel 0 is brightfield
-
-    # create a list of offsets using _determine_rotation_offset()
-    rotational_offsets = []
-    # create an index variable to print so the user can see progress
-    index = 0
-    # Calculate rotational offset for a subsample of 3 bf images in the stack
-    for image in random.sample(images, 3):
-        index = index + 1
-        print("Determining rotation offset %d of %d" % (index, len(images)))
-        vis_channel = image[0]
-
-        try:
-            rotational_offsets.append(_determine_rotation_offset(vis_channel))
-        except:
-            # do this if the image is a single channel
-            rotational_offsets.append(_determine_rotation_offset(image))
-
-    # set rotational offsets to the median 
-    sample_rt_offsets = np.asarray(rotational_offsets)
-    sample_rt_offests_md = np.median(sample_rt_offsets)
-    final_rt_offests_arr = np.full(shape=(len(images)), fill_value=(sample_rt_offests_md))
-
-    # create a list of rotationally aligned images rotated according to the final_rt_offsets_arr array
-    rotated_images = []
-    index = 0 # again, progress bar index
-    for i in range(0, len(images)):
-        channels_i = []
-        for j in range(0, len(images[0])):
-            channels_i.append(images[i][j])
-
-        index += 1
-        print("Rotating image %d of %d" % (index, len(images)))
-        rotated_channels_i = []
-
-        try:
-            for j in range(0, len(channels_i)):
-                rotated_channels_i.append(rotate_image(channels_i[j], final_rt_offests_arr[i]))
-        except:
-            # again, need to do this if single channel dataset
-            rotated_channels_i = rotate_image(images[i], final_rt_offests_arr[i])
-
-        rotated_images.append(rotated_channels_i)
-    
-    # calculate translational offsets
-    index = 0
-    translational_offsets = []
-    for i in range(0, len(rotated_images)):
-        image = rotated_images[i][0]
-        index += 1
-        print("Determining registration offset %d of %d" % (index, len(images)))
-        try:
-            # align based on feautres of image 0, I think I should change this to align
-            # to image i-1
-            translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
-        except:
-            translational_offsets.append(_determine_registration_offset(rotated_images[0], rotated_images[i]))
-        
-    # now translate the images
-    translated_images = []
-    index = 0
-    for i in range(0, len(translational_offsets)):
-        index += 1
-        print("Translating image %d of %d" % (index, len(images)))
-        
-        translated_channels_i = []
-
-        try:
-            for j in range(0, len(images[0])):
-                translated_channels_i.append(translate_image(rotated_images[i][j], translational_offsets[i]))
-        except:
-            translated_channels_i = (translate_image(rotated_images[i], translational_offsets[i]))
-
-        translated_images.append(translated_channels_i)
     
     # make a dictionary to hold images for each channel
     keys = channel_names
@@ -255,9 +178,9 @@ def align_images(fov_path, channel_names):
 
     if len(channel_names) > 1:
         for j in range(0, len(images[0])):        
-            values.append([translated_images[i][j] for i in range(0, len(translated_images))])
+            values.append([images[i][j] for i in range(0, len(images))])
     else:
-        values.append([translated_images[i] for i in range(0, len(translated_images))])
+        values.append([images[i] for i in range(0, len(images))])
 
     translated_images_dict = dict(zip(keys, values))
 

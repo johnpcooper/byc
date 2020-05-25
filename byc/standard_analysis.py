@@ -126,8 +126,8 @@ class Cell_Data(object):
             stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, xy, sub_coord))
 
             # read the .csv containing measurements
-            cell_trace_dsred_path = str(path + stack_title + "dsred.csv")
-            cell_trace_yfp_path = str(path + stack_title + "yfp.csv")
+            cell_trace_dsred_path = str(path + stack_title + "_dsred_stack.csv")
+            cell_trace_yfp_path = str(path + stack_title + "_yfp_stack.csv")
             
             # create each dataframe for dsred and yfp
             cell_trace_dsred = pd.read_csv(cell_trace_dsred_path)

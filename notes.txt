@@ -1,0 +1,2 @@
+Should I put the environment files (created by venv) inside my byc repo project dir?
+
