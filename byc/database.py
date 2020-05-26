@@ -46,12 +46,12 @@ class dataBase():
 		cols = ['expt_name', 'trace_path', 'chase_index']
 		trace_db_df = pd.DataFrame(columns = cols)
 		if overwrite:
-			write_path = f'{self._byc_trace_database_dir}\\cell_trace_database.csv'
+			writepath = f'{self._byc_trace_database_dir}\\cell_trace_database.csv'
 		else:
-			write_path = f'{self._byc_trace_database_dir}\\cell_trace_database_new.csv'
+			writepath = f'{self._byc_trace_database_dir}\\cell_trace_database_new.csv'
 
 		trace_db_df.to_csv(write_path, index=False)
-		self.trace_database_df = pd.read_csv(write_path)
+		self.trace_database_df = pd.read_csv(writepath)
 		
 	def add_expt_to_trace_database(self, cell_trace_df_paths, expt_name, chase_index):
 		# Use the list of file names chosen by the user
@@ -78,11 +78,31 @@ class dataBase():
 			traces_list = None
 		return traces_list
 
-	def update_expt_trace_dfs(self, new_dfs_list, expt_name):
+	def update_expt_trace_dfs(self, new_dfs_list, expt_name, **kwargs):
 		"""
 		For each cell in new_dfs_list, overwrite its old trace .csv 
-		with the one passed this function.
+		with the one passed this function. Overwrite old trace csvs
+		by default. If overwrite=False, put v2 on end of new filenames
+		but don't add these new paths to the trace database.
 		"""
-		pass
+
+		overwrite = kwargs.get('overwrite', True)
+		expt_df = self.trace_database_df[self.trace_database_df.expt_name == expt_name]
+		# Since the expt_df slice from the main database df doesn't necessarily start
+		# at 0. 
+		indices = expt_df.index
+
+		if overwrite:
+			writepaths = [expt_df.trace_path[index] for index in indices]
+		else:
+			writepaths = [f'{expt_df.trace_path[index][:-4]}_v2.csv' for index in indices]
+
+		message = f"Number of dfs ({len(new_dfs_list)})did not match number of writepaths in database ({len(writepaths)})"
+		assert len(writepaths) == len(new_dfs_list), message 
+
+		for i in range(len(new_dfs_list)):
+			df = new_dfs_list[i]
+			writepath = writepaths[i]
+			df.to_csv(writepath, index=False)
 
 byc_database = dataBase()
