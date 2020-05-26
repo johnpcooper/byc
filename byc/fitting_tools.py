@@ -8,8 +8,8 @@ from inspect import signature
 def single_exp(x, a, b, c):
     return a * np.exp(-b * x) + c
 
-def double_exp(x, a, b, c, d):
-    return a * np.exp(-b * x) + c * np.exp(-d * x)
+def double_exp(x, a, b, c, d, e):
+    return a * np.exp(-b * x) + c * np.exp(-d * x) + e
 
 def get_r_squared(y, y_pred):
     """
@@ -103,12 +103,14 @@ def exp_fit(cell_df, start_frame, end_frame, fit_func=single_exp, col_name='yfp_
     else:
         adj_end_frame = end_frame + 1
 
-    # Background substract the cell_df column to be fit
-    background = cell_df[col_name].min()
-    y_raw = cell_df[col_name][start_frame: adj_end_frame] - background
-    y_raw.index = range(adj_end_frame-start_frame) # do this so y_norm won't have an index and
+    # Background substract the cell_df column to be fit    
+    y_raw = cell_df[col_name][start_frame: adj_end_frame]
+    background = y_raw.min()
+    y_raw = y_raw - background
+    y_raw.index = range(adj_end_frame - start_frame)
+    y_norm = y_raw / y_raw[0]
+    y_norm.index = range(adj_end_frame-start_frame) # do this so y_norm won't have an index and
     # residuals can be properly calculated from y_norm - y_output_norm
-    y_norm = y_raw / y_raw[start_frame]
     x = cell_df['hours'][0: adj_end_frame-start_frame]
     
     # Define a list of paramaters to be added to the final params_dict
@@ -152,7 +154,7 @@ def exp_fit(cell_df, start_frame, end_frame, fit_func=single_exp, col_name='yfp_
 
     return params_dict
 
-def get_all_fits_df(dfs_list, start_frame, window_size, fit_func=single_exp):
+def get_all_fits_df(dfs_list, start_frame, window_size, fit_func=single_exp, col_name='yfp_norm'):
     if window_size == 'max':
         window_size = np.array([len(df) for df in dfs_list]).max()
     else:
@@ -163,7 +165,7 @@ def get_all_fits_df(dfs_list, start_frame, window_size, fit_func=single_exp):
     fit_params_dfs = []
     for i in range(len(dfs_list)):
         try:
-            fit_params_dict = exp_fit(dfs_list[i], start_frame, end_frame, fit_func=fit_func)
+            fit_params_dict = exp_fit(dfs_list[i], start_frame, end_frame, fit_func=fit_func, col_name=col_name)
             fit_params_dfs.append(pd.DataFrame(fit_params_dict))
         except:
             print('fit failed for cell', i)
