@@ -11,11 +11,12 @@ from skimage import img_as_uint
 from read_roi import read_roi_file, read_roi_zip
 
 class Cell_Stack(object):
-    
-    """ Upon instantiation, this class will ask the user to select a master index
-        .csv file containing cell indices. The methods of the class then operate
-        on rois etc. referenced by the master index. For now, the only public variable
-        of this class is self.channel_names which is useful for saving stacks later. """
+    """
+    Upon instantiation, this class will ask the user to select a master index
+    .csv file containing cell indices. The methods of the class then operate
+    on rois etc. referenced by the master index. For now, the only public variable
+    of this class is self.channel_names which is useful for saving stacks later.
+    """
     
     def __init__(self, threshold_channel):
         
@@ -26,9 +27,10 @@ class Cell_Stack(object):
         # It may be useful at some point to add code here to run methods below upon instantiation.
     
     def set_fp(self, prompt):
-    
-        """ Return the path to a file of interest. Call with the prompt you would like to 
-            display in the dialog box."""
+    	"""
+        Return the path to a file of interest. Call with the prompt you would like to 
+        display in the dialog box.
+        """
 
         # create the dialog box and set the fn
         root = tk.Tk()
@@ -39,8 +41,9 @@ class Cell_Stack(object):
         return fp # return the path to the file you just selected
     
     def set_master_cells_df(self, prompt):
-
-        """ Return a dataframe read from the master cells index .csv"""
+        """ 
+        Return a dataframe read from the master cells index .csv
+        """
 
         # define the path to the index .csv
         master_cells_fp = self.set_fp(prompt)
@@ -50,10 +53,11 @@ class Cell_Stack(object):
         return master_cells_df
     
     def set_cell_crop_roi_dfs(self, master_cells_df):
-        
-        """ Return a list of DataFrames, one for each cell. The coordinates in each
-            of these DataFrames will be used to crop from the image stacks in 
-            set_cropped_cell_stack_list() """
+        """
+        Return a list of DataFrames, one for each cell. The coordinates in each
+        of these DataFrames will be used to crop from the image stacks in 
+        set_cropped_cell_stack_list()
+        """
     
         cell_crop_roi_dfs = []
 
@@ -96,9 +100,10 @@ class Cell_Stack(object):
         return cell_crop_roi_dfs
     
     def set_cell_channel_stacks(self, master_cells_df, cell_index):
-
-        """ Return a list of tf.imread() objects (one for each channel collected in expt)
-            read according to data in the master_cells_df """        
+        """
+        Return a list of tf.imread() objects (one for each channel collected in expt)
+        read according to data in the master_cells_df
+        """ 
 
         expt_path = master_cells_df.path[cell_index]
         expt_date = int(master_cells_df.date[cell_index])

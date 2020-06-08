@@ -31,7 +31,7 @@ def get_r_squared(y, y_pred):
             print('Failed to calculate r_sq, y and y_pred were not arrays')
             r_sq = False
     else:
-        print("Lengths of y and y_bar not the same")
+        print("Lengths of y and y_pred not the same")
         r_sq = False
 
     return r_sq

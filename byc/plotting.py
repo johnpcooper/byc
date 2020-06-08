@@ -9,25 +9,27 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 # Stats analysis tools
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
+# Stuff from byc
+import byc.file_management as fm
 
 plt_params_dict = {'font.sans-serif': 'Arial'}
 
 def set_styles(plt, matplotlib):
-	"""
-	Set fonts and default style
-	"""
+    """
+    Set fonts and default style
+    """
 
-	try:
-		plt.style.use('default')
-		for param, value in plt_params_dict.items():
-			matplotlib.rcParams[param] = value
-	except:
-		print("""
-			Before running set_styles(), you must:
+    try:
+        plt.style.use('default')        
+        for param, value in plt_params_dict.items():
+            matplotlib.rcParams[param] = value
+    except:
+        print("""
+            Before running set_styles(), you must:
 
-			import matplotlib.pyplot as plt
-			import matplotlib
-			""")
+            import matplotlib.pyplot as plt
+            import matplotlib
+            """)
 
 def make_yticks_0cent(y, **kwargs):
     
@@ -95,24 +97,23 @@ def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
     # Set parameters for decay traces plot
     xlabel_traces = kwargs.get('xlabel_traces', 'Time after Chase (Hrs.)')
     ylabel_traces = kwargs.get('ylabel_traces', 'YFP(t)/YFP(0)')
-    xlim_traces = kwargs.get('xlim_traces', (0, 8))
     ylim_traces = kwargs.get('ylim_traces', (0, 1.2))
     xticks_traces = kwargs.get('xticks_traces', make_ticks(all_fits_df.x_input, decimals=0))
     yticks_traces = kwargs.get('y_ticks_traces', make_ticks((0, 1), decimals=1, n_ticks=7))
-    
+    xlim_traces = kwargs.get('xlim_traces', (xticks_traces.min(), xticks_traces.max()))    
     # Set parameters for decay fit residuals plot
     xlabel_resids = kwargs.get('xlabel_resids', xlabel_traces)
     ylabel_resids = kwargs.get('ylabel_resids', 'Residuals')
     xlim_resids = kwargs.get('xlim_resids', xlim_traces)
-    ylim_resids = kwargs.get('ylim_resids', None)
     xticks_resids = xticks_traces
     yticks_resids = kwargs.get('yticks_resids', make_yticks_0cent(all_fits_df.residual))
+    ylim_resids = kwargs.get('ylim_resids', (yticks_resids.min(), yticks_resids.max()))
     
     # Set parameters for decay fit residuals kernel density estimate
     # plot    
     xlabel_kde = kwargs.get('xlabel_kde', ylabel_resids)
     ylabel_kde = kwargs.get('ylabel_kde', 'Density')
-    xlim_kde = kwargs.get('xlim_kde', None)
+    xlim_kde = kwargs.get('xlim_kde', ylim_resids)
     ylim_kde = kwargs.get('ylim_kde', None)
     xticks_kde = yticks_resids
     # yticks_kde will get set below during 
@@ -137,9 +138,6 @@ def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
     ax.axhline(0, linewidth=linewidth, alpha=linealpha, color='black')
     for spine in [ax.spines[hidden_spine] for hidden_spine in hidden_spines]:
         spine.set_visible(False)
-
-    if ylim_resids:
-        ax.set_ylim(ylim_resids)
     try:
         ax.set_xticks(xticks_resids)
     except:
@@ -148,8 +146,10 @@ def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
         ax.set_yticks(yticks_resids)
     except:
         pass
-    if xlim_resids:
-        ax.set_xlim(xlim_resids)
+    try:
+        ax.set_ylim(ylim_resids)
+    except:
+        pass
     if xlabel_resids:
         ax.set_xlabel(xlabel_resids, fontsize=labelfontsize)
     if ylabel_resids:
@@ -216,7 +216,7 @@ def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
     if ylim_kde:
         ax3.set_ylim(ylim)
     if xlim_kde:
-        ax3.set_xlim(xlim)
+        ax3.set_xlim(xlim_kde)
     if xlabel_kde:
         ax3.set_xlabel(xlabel_kde, fontsize=labelfontsize)
     if ylabel_kde:
@@ -237,3 +237,166 @@ def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
     if filename and fileformat:
         fig.savefig(f'{filename}{fileformat}', transparent=True)
         print(f'Saved plot at {filename}{fileformat}')
+
+def plot_fluor_trace(cell_df, column_name, subplot_position, **kwargs):
+    """
+    Create and save a line plot of the column indicated vs. time
+    for the whole cell_df 
+    """
+    # Check for kwargs and set defaults
+    x = cell_df.hours
+    y = cell_df.loc[:, column_name]
+    cell_index = cell_df.cell_index.unique()[0]
+    expt_name = kwargs.get('expt_name', cell_df.Label.unique()[0][0:12])
+    filetype = kwargs.get('filetype', 'png')
+    figsize = kwargs.get('figsize', ())
+    filename = f'{expt_name}_cell{cell_index}_{column_name}_trace'
+    # Create figure on which to plot traces or get it from kwargs
+    fig=kwargs.get('fig', plt.figure(figsize=(4, 1.5), tight_layout=True))
+    fig.set_dpi(300)
+    linewidth = kwargs.get('linewidth', 0.8)
+    tracecolor = kwargs.get('tracecolor', 'red')
+    hidden_spines = kwargs.get('hidden_spines', ['top', 'right'])
+    xlim = kwargs.get('xlim', (0, np.round(np.max(x), 0)))
+    xlabel = kwargs.get('xlabel', 'Time (hrs.)')
+    ylim = kwargs.get('ylim', (np.round(np.min(y) - np.max(y)*.1, 0),
+                               np.round(np.max(y) + np.max(y)*.1, 0))
+                      )
+    ylabel = kwargs.get('ylabel', column_name)
+    ylabelrotation = kwargs.get('ylabelrotation', 90)
+    # Make the plot
+    ax = fig.add_subplot(subplot_position)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_yticks(np.linspace(ylim[0], ylim[1], 3))
+    ax.set_ylabel(ylabel, rotation=ylabelrotation)
+    ax.set_xlabel(xlabel)
+
+    ax.plot(x, y,
+            linewidth=linewidth, color=tracecolor, alpha=0.8)
+
+    for spine in [ax.spines[name] for name in hidden_spines]:
+        spine.set_visible(False)
+
+    return ax
+
+def plot_cell_peak_detection(cell_df, peak_indices, **kwargs):
+    """
+    Perform peak detection using byc.trace_tools and plot the result.
+    See byc.trace_tools for details on how filtering and detection is 
+    achieved
+    """    
+    cell_index = cell_df.cell_index.unique()[0]
+    expt_name = kwargs.get('expt_name', cell_df.Label.unique()[0][0:12])
+    filetype = kwargs.get('filetype', 'png')
+    filename = f'{expt_name}_cell{cell_index}_manual_vs_auto_bud'
+    try:
+        manual_bud_indices = kwargs.get('manual_bud_indices')
+    except:
+        manual_bud_indices = fm.read_roi_position_indices(fm.select_file("Choose manual bud rois .zip"))
+    collection_interval = kwargs.get('collection_interval', 10)
+    death_cutoff_hr = (np.max(manual_bud_indices)*collection_interval)/60
+    linewidth = kwargs.get('linewidth', 0.8)
+    hidden_spines = kwargs.get('hidden_spines', ['top', 'right'])
+    xlim = kwargs.get('xlim', (0, 70))
+    ylim = kwargs.get('ylim', (0.9, 1.1))
+    ylim_raw = kwargs.get('ylim_raw', (1000, 5000))
+    
+    # Create figure on which to plot traces
+    fig = plt.figure(figsize=(4, 3), tight_layout=True)
+    fig.set_dpi(300)
+
+    # Plot the automaticall discovered bud frames
+    ax = fig.add_subplot(212)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Filtered')
+    ax.set_xlabel('Time (hrs.)')
+
+    ax.plot(cell_df.hours, cell_df.dsred_mean_local_mean_norm_medfilt,
+            linewidth=linewidth, color='black')
+
+    for peak_index in peak_indices:
+        peak_hr = (peak_index*collection_interval)/60
+        if peak_hr <= death_cutoff_hr:
+            ax.axvline(peak_hr,
+                       linewidth=linewidth, color='black',
+                       linestyle='--')
+        else:
+            pass
+    for spine in [ax.spines[name] for name in hidden_spines]:
+        spine.set_visible(False)
+
+    # Plot the manually discovered bud frames
+    ax2 = fig.add_subplot(211)
+    ax2.set_xlim(xlim)
+    ax2.set_ylim(ylim_raw)
+    ax2.set_yticks(np.linspace(ylim_raw[0], ylim_raw[1], 3))
+    ax2.set_ylabel('Raw DsRed')
+
+    ax2.plot(cell_df.hours, cell_df.dsred_mean,
+            linewidth=linewidth, color='red', alpha=0.7)
+    for frame in manual_bud_indices[:]:
+        frame_hr = (frame*collection_interval)/60
+        ax2.axvline(frame_hr,
+                   linewidth=linewidth, color='black',
+                   linestyle='--')
+    for spine in [ax2.spines[name] for name in hidden_spines]:
+        spine.set_visible(False)
+
+    fig.savefig(f'{filename}.{filetype}')
+
+def plot_auto_manual_corr(neighbor_df, cell_index, expt_name):
+    """
+    Really need to clean up defaults etc. on this one but so far
+    it works. neighbor_df should be made with:
+
+    neighbor_df = trace_tools.make_bud_neighbor_df(manual_bud_indices, auto_bud_indices=peak_indices)
+
+    """
+
+    collection_interval = 10
+    n_auto_buds = len(neighbor_df.auto_bud_frame[~neighbor_df.auto_bud_frame.isnull()])
+    n_manual_buds = len(neighbor_df.manual_bud_frame[~neighbor_df.manual_bud_frame.isnull()])
+    ylim = (0, 70)
+    xlim = ylim
+    s=f'Cell {cell_index}\n# of Auto Buds: {n_auto_buds}\n# of Manual Buds: {n_manual_buds}'
+    xy=(xlim[1]*0.33, xlim[1]*0.8)
+
+    hidden_spines = ['top', 'right']
+    filename = f'{expt_name}_cell{cell_index}_manual_vs_auto_bud_correlation'
+    filetype = 'png'
+
+    x = (neighbor_df.auto_bud_frame*collection_interval)/60
+    y = (neighbor_df.nearest_manual_frame*collection_interval)/60
+
+    xlabel = 'Auto Bud Hr.'
+    ylabel = 'Nearest Manual Bud Hr.'
+
+    fig = plt.figure(figsize=(2.5, 2.5), tight_layout=True)
+    fig.set_dpi(300)
+
+    ax = fig.add_subplot()
+    ax.set_ylim(ylim)
+    ax.set_xlim(xlim)
+    ax.set_xticks(np.linspace(xlim[0], xlim[1], 8))
+    ax.set_yticks(np.linspace(xlim[0], xlim[1], 8))
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel(xlabel)
+
+    ax.plot(np.linspace(0, np.max(y), np.max(y)),
+            linewidth=1, color='blue', linestyle='--',
+            alpha=0.7)
+
+    ax.scatter(x, y,
+               s=8, color='white', edgecolor='black', linewidths=0.8)
+
+    for spine in [ax.spines[name] for name in hidden_spines]:
+        spine.set_visible(False)
+
+    ax.set_aspect(1.0/ax.get_data_ratio(), adjustable='box')
+    ax.annotate(s=s,
+                xy=xy,
+                fontsize=8)
+
+    fig.savefig(f'{filename}.{filetype}')

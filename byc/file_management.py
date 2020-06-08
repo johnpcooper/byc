@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import tkinter as tk
 import tkinter.filedialog as tkdia
@@ -5,6 +6,7 @@ import os
 from skimage import io
 from tifffile import imsave
 from skimage.util import img_as_uint
+from read_roi import read_roi_zip
 
 def select_files(prompt):
     # return a list of files that user selects in the dialogue box
@@ -38,6 +40,18 @@ def select_directory(prompt):
     root.destroy()
     
     return input_dir
+
+def read_roi_position_indices(path):
+
+    roi_set = read_roi_zip(path)
+    keys = list(roi_set.keys())
+    
+    # define an array of bud start positions for this cell
+    bud_positions = []
+    for i in range(0, len(keys)):
+        bud_positions.append(roi_set[keys[i]]['position']-1)
+        
+    return np.array(bud_positions)
 
 def rename_steady_state(max_n_fovs):
 
@@ -143,8 +157,9 @@ def rename_byc():
     
     expt_dir = select_directory("Choose the directoy holding the micromanager output of your byc experiment")
     pos_dir_list = os.listdir(expt_dir)
-    
+    # Channels as they are named in the micromanager .tifs
     channels = ['Brightfield', 'YFP', 'RFP']
+    # Channels as I want to name them in the output stacks
     fluor_names = ['bf', 'yfp', 'dsred']
     channel_dict = dict(zip(fluor_names, channels))
     expt_name = '20200214_byc'

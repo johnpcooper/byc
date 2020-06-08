@@ -7,6 +7,7 @@ from skimage.feature.register_translation import _upsampled_dft
 from skimage.transform import AffineTransform
 import skimage.io as io
 from skimage.util import img_as_uint
+import random
 
 from scipy import ndimage
 import numpy as np
@@ -175,39 +176,49 @@ def align_images(fov_path, channel_names):
     # ascertain the number of channels in the image, assume that 
     # channel 0 is brightfield
 
-    # create a list of offsets using _determine_rotation_offset()
+    # Calculate rotational offset for three random frames
+    # in FOV stack
+    if len(images) >= 3:
+        frames_to_align = np.random.choice(range(len(images)), 3, replace=False)
+    elif len(image) < 3:
+        frames_to_align = [0]
+
     rotational_offsets = []
-    # create an index variable to print so the user can see progress
-    index = 0
-    for image in images:
-        index = index + 1
-        print("Determining rotation offset %d of %d" % (index, len(images)))
-        vis_channel = image[0]
+    for frame in frames_to_align:
+        image = images[frame]    
+        print(f"Determining rotation offset for frame {frame}")
+        if image.ndim < 3: # if image only has one channel
+        # assume that that one channel is the brightfield channel
+        # and align based on that channel
+            vis_channel = image
+        elif image.ndim >= 3: # if image has more than one channel,
+        # align based on the first channel which should be brightfied (bf)
+            vis_channel = image[0]
+        rotational_offset = _determine_rotation_offset(vis_channel)
+        print(rotational_offset)
+        rotational_offsets.append(rotational_offset)
 
-        try:
-            rotational_offsets.append(_determine_rotation_offset(vis_channel))
-        except:
-            # do this if the image is a single channel
-            rotational_offsets.append(_determine_rotation_offset(image))
+    rotational_offset = np.median(np.array(rotational_offsets))
+    final_rt_offests_arr = np.full(shape=(len(images)), fill_value=(rotational_offset))
 
-    # create a list of rotationally aligned images rotated according to the rotational_offsets list
+    # create a list of rotationally aligned images rotated according to the final_rt_offsets_arr array
     rotated_images = []
     index = 0 # again, progress bar index
-    for i in range(0, len(images)):
-        channels_i = []
-        for j in range(0, len(images[0])):
-            channels_i.append(images[i][j])
+    for i, frame in enumerate(images):
+        print("Rotating image %d of %d" % (i, len(images)))
 
-        index += 1
-        print("Rotating image %d of %d" % (index, len(images)))
-        rotated_channels_i = []
+        if frame.ndim < 3:
+            rotated_channels_i = rotate_image(frame, final_rt_offests_arr[i])
+        elif frame.ndim >= 3:
+            channels_i = []
+            for j in range(0, len(frame)):
+                channels_i.append(frame[j])
 
-        try:
+            index += 1
+
+            rotated_channels_i = []
             for j in range(0, len(channels_i)):
-                rotated_channels_i.append(rotate_image(channels_i[j], rotational_offsets[i]))
-        except:
-            # again, need to do this if single channel dataset
-            rotated_channels_i = rotate_image(images[i], rotational_offsets[i])
+                rotated_channels_i.append(rotate_image(channels_i[j], final_rt_offests_arr[i]))
 
         rotated_images.append(rotated_channels_i)
     
