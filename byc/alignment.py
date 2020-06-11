@@ -197,7 +197,7 @@ def align_images(fov_path, channel_names):
         print(rotational_offset)
         rotational_offsets.append(rotational_offset)
 
-    rotational_offset = np.median(np.array(rotational_offsets))
+    rotational_offset = np.min(np.array(rotational_offsets))
     final_rt_offests_arr = np.full(shape=(len(images)), fill_value=(rotational_offset))
 
     # create a list of rotationally aligned images rotated according to the final_rt_offsets_arr array
