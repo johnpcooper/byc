@@ -3,7 +3,6 @@ from skimage.morphology import disk, remove_small_objects
 from skimage import transform
 from skimage.morphology import skeletonize
 from skimage.feature import register_translation
-from skimage.feature.register_translation import _upsampled_dft
 from skimage.transform import AffineTransform
 import skimage.io as io
 from skimage.util import img_as_uint
