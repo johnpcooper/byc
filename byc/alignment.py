@@ -52,13 +52,7 @@ def _segment_edge_areas(edges, disk_size=9, mean_threshold=200, min_object_size=
     threshold = threshold_otsu(edges)
     # Filter out the edge data below the threshold, effectively removing some noise
     raw_channel_areas = edges <= threshold
-    # smooth out the data
-    channel_areas = rank.mean(raw_channel_areas, disk(disk_size)) < mean_threshold
-    # remove specks and blobs that are the result of artifacts
-    clean_channel_areas = remove_small_objects(channel_areas, min_size=min_object_size)
-    # Fill in any areas that re completely surrounded by the areas (hopefully) covering
-    # the channels
-    return ndimage.binary_fill_holes(clean_channel_areas)
+    return ndimage.binary_fill_holes(raw_channel_areas)
 
 
 # from fylm/service/rotation.py
@@ -197,7 +191,7 @@ def align_images(fov_path, channel_names):
         print(rotational_offset)
         rotational_offsets.append(rotational_offset)
 
-    rotational_offset = np.min(np.array(rotational_offsets))
+    rotational_offset = np.median(np.array(rotational_offsets))
     final_rt_offests_arr = np.full(shape=(len(images)), fill_value=(rotational_offset))
 
     # create a list of rotationally aligned images rotated according to the final_rt_offsets_arr array
