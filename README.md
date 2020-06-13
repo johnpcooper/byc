@@ -52,7 +52,7 @@ pip3 install .
 deactivate
 ```
 
-This package uses tkinter. To use tkinter with the WSL , you'll need to install [Xming for windows](https://sourceforge.net/projects/xming/) and run Xlaunch (search in start menu) before running byc functionality that uses tkinter. You'll also need to make sure you have a valid DISPLAY environment variable. Once Xlaunch is running with dispaly number set to 0:
+This package uses tkinter. To use tkinter with the WSL , you'll need to install [Xming for windows](https://sourceforge.net/projects/xming/) and run Xlaunch (search in start menu) before running byc functionality that uses tkinter. You'll also need to make sure you have a valid DISPLAY environment variable. Once Xlaunch is running with display number set to 0:
 
 ```bash
 export DISPLAY=:0
@@ -61,6 +61,8 @@ export DISPLAY=:0
 Then you should be able to use tkinter.
 
 ## Test run_alignment on example data:
+
+Example  `alignment_input` directory can be downloaded [here](https://utexas.box.com/s/wzkp7ijc9v3ksvhf9rj5sr564aoa1o3k). When you run the script below, you'll be prompted first to select an input directory (choose one holding just the data downloaded above) and an output directory.
 
 ### Windows (powershell)
 
@@ -81,11 +83,7 @@ source .byc_env/bin/activate
 python bin/run_alignment
 ```
 
-A file dialogue will come up and prompt you to select the input directory. Select `...Finkelstein-Matouschek\byc_data\example_byc_expts\20200221_byc\tifs\alignment_input ` for input folder and then `...Finkelstein-Matouschek\byc_data\example_byc_expts\20200221_byc\tifs\alignment_output` for output folder.
-
-Full paths of input and output directories will depend on where they are on your computer. These are just the paths to the folder within my Box Sync\Finkelstein-Matouschek backup
-
-Python will then ask how you want to name channels in the experiment:
+Python will then ask how you want to name channels in the experiment (should be the same for linux and windows):
 
 ```sh
 # Python will prompt you to name channels in the terminal.
