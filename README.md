@@ -30,7 +30,7 @@ pip install .
 
 ### Linux
 
-This is specifically the Windows subsystem for linux, so there may be quirks. To enter linux in Windows 10, run `bash` in a powershell or cmd prompt.
+This is specifically tested in the Windows subsystem for linux, so there may be quirks. To enter linux in Windows 10, run `bash` in a powershell or cmd prompt.
 
 ```sh
 # Go to your home directory and clone the byc repository there
@@ -52,7 +52,17 @@ pip3 install .
 deactivate
 ```
 
+This package uses tkinter. To use tkinter with the WSL , you'll need to install [Xming for windows](https://sourceforge.net/projects/xming/) and run Xlaunch (search in start menu) before running byc functionality that uses tkinter. You'll also need to make sure you have a valid DISPLAY environment variable. Once Xlaunch is running with dispaly number set to 0:
+
+```bash
+export DISPLAY=:0
+```
+
+Then you should be able to use tkinter.
+
 ## Test run_alignment on example data:
+
+### Windows (powershell)
 
 ```sh
 cd C:\
@@ -60,6 +70,15 @@ cd C:\
 .\byc\.byc\Scripts\activate
 # Run the alignment script and follow prompts
 python .\byc\bin\run_alignment.py
+```
+
+### Linux
+
+```sh
+cd ~
+cd byc
+source .byc_env/bin/activate
+python bin/run_alignment
 ```
 
 A file dialogue will come up and prompt you to select the input directory. Select `...Finkelstein-Matouschek\byc_data\example_byc_expts\20200221_byc\tifs\alignment_input ` for input folder and then `...Finkelstein-Matouschek\byc_data\example_byc_expts\20200221_byc\tifs\alignment_output` for output folder.
