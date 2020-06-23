@@ -23,10 +23,8 @@ def set_paths():
     
     return input_path, output_path
 
-expt_path, save_path = set_paths()
-
 # Generate a list of directories, one for each fov directory in the expt_path
-def set_fov_dirs():
+def set_fov_dirs(expt_path):
 
     fov_dirs = os.listdir(expt_path)
     fov_paths = []
@@ -37,7 +35,8 @@ def set_fov_dirs():
 
 def run():
 
-    fov_dirs, fov_paths = set_fov_dirs()
+    expt_path, save_path = set_paths()
+    fov_dirs, fov_paths = set_fov_dirs(expt_path)
     len_channels, channel_names = a.get_channel_names(fov_paths[0])
 
     for i in range(0, len(fov_dirs)):
@@ -50,4 +49,4 @@ def run():
         a.save_stacks(translated_images_dict, save_path, fov_name)
 
 if __name__ == "__main__":
-  run()
+    run()
