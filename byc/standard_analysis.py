@@ -123,7 +123,7 @@ class Cell_Data(object):
             xy = cell_df['xy'][cell_df.index.min()]
             sub_coord = cell_df['sub_coord'][cell_df.index.min()]
 
-            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, xy, sub_coord))
+            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy).zfill(2), str(sub_coord).zfill(3)))
 
             # read the .csv containing measurements
             cell_trace_dsred_path = str(path + stack_title + "_dsred_stack.csv")
@@ -301,16 +301,26 @@ def set_processed_traces(window_width, collection_interval):
     raw_yfp_trace_dfs = cd.raw_yfp_trace_dfs
     
     processed_traces = set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs)
-
+    trace_filenames = []
     # add late daughter morphology and cell index data to processed traces
     for cell_index in range(0, len(cells_dfs)):
-    	cell_master_df = cells_dfs[cell_index]
-    	cell_trace_df = processed_traces[cell_index]
+        cell_master_df = cells_dfs[cell_index]
+        cell_trace_df = processed_traces[cell_index]
 
-    	cell_trace_df['late_daughter_shape'] = cell_master_df['late_daughter_shape'][cell_master_df.index[0]]
-    	cell_trace_df['cell_index'] = cell_index
+        cell_trace_df['late_daughter_shape'] = cell_master_df['late_daughter_shape'][cell_master_df.index[0]]
+        cell_trace_df['cell_index'] = cell_index
+        
+        # Find data to create a filename for this cell's trace
+        # and save it as a csv
+        datadir = cd.master_cells_df.loc[cell_index, 'path']
+        date = cd.master_cells_df.loc[cell_index, 'date']
+        expt_type= cd.master_cells_df.loc[cell_index, 'expt_type']
+        condition_name = datadir[datadir.rindex('\\')+2:]
+        filename = f'{datadir}\\{date}_{expt_type}_{condition_name}_cell{str(cell_index).zfill(3)}.csv'
+        cell_trace_df.to_csv(filename, index=False)
+        trace_filenames.append(filename)
     
-    return processed_traces
+    return processed_traces, trace_filenames
 
 def set_file_paths(prompt):
     # create the dialog box and set the fn
