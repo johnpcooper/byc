@@ -1,10 +1,11 @@
 # Budding yeast chemostat (byc)
 
-## Installation
 <p align="center">
-<img src="https://github.com/johnpcooper/byc/blob/master/docs/byc_schematic.png?raw=true" width="300">
+<img src="https://www.dropbox.com/s/fsv2bvrxtlpkzte/byc_schematic.png?raw=true" width="300">
 </p>
-<img src="https://www.dropbox.com/s/fsv2bvrxtlpkzte/byc_schematic.png?raw=true">
+
+## Installation
+
 ### Windows
 
 Use powershell (pwsh.exe, not cmd.exe)
