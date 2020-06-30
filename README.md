@@ -1,8 +1,6 @@
 # Budding yeast chemostat (byc)
 
-<p align="center">
-<img src="https://www.dropbox.com/s/fsv2bvrxtlpkzte/byc_schematic.png?dl=1" width="250"/>
-</p>
+![img](https://www.dropbox.com/s/fsv2bvrxtlpkzte/byc_schematic.png?dl=1)
 
 ## Installation
 
