@@ -1,7 +1,5 @@
 # Budding yeast chemostat (byc)
 
-![img](https://www.dropbox.com/s/ii73daki5wtva2f/byc_schematic.png)
-
 ## Installation
 
 ### Windows
