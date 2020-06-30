@@ -27,7 +27,7 @@ class Cell_Stack(object):
         # It may be useful at some point to add code here to run methods below upon instantiation.
     
     def set_fp(self, prompt):
-    	"""
+        """
         Return the path to a file of interest. Call with the prompt you would like to 
         display in the dialog box.
         """
@@ -278,7 +278,7 @@ def save_cell_stacks():
     threshold_channel = input("Choose channel to use for thresholding: ")
     cs = Cell_Stack(threshold_channel=threshold_channel)
     
-    for cell_index in cs.master_cells_df.sub_coord:    
+    for cell_index in cs.master_cells_df.sub_coord:
     
         # Run all the cropping and processing method of Cell_Stack on the cell
         # with cell_index
