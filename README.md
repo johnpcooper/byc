@@ -100,3 +100,12 @@ Name for channel 2: yfp
 ```
 
 Once run_alignment is finished running, the aligned stacks for each channel will be saved in the output folder selected in the file dialogs above.
+
+## Data processing and analysis wikis
+
+Notebooks for each step in the process in order:
+
+1. Reshaping raw data when ouput from micromanager: [file_management](https://github.com/johnpcooper/byc/blob/master/notebooks/file_management.ipynb)
+2. Register stacks of reshaped raw data: [alignment](https://github.com/johnpcooper/byc/blob/master/notebooks/alignment.ipynb)
+3. Cell segementation: [segmentation](https://github.com/johnpcooper/byc/blob/master/notebooks/segmentation.ipynb)
+4. Analysis and visualization of flourescence measurements and cell cycle annotations: [standard_analysis](https://github.com/johnpcooper/byc/blob/master/notebooks/standard_analysis.ipynb)
