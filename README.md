@@ -106,6 +106,6 @@ Once run_alignment is finished running, the aligned stacks for each channel will
 Notebooks for each step in the process in order:
 
 1. Reshaping raw data when ouput from micromanager: [file_management](https://github.com/johnpcooper/byc/blob/master/notebooks/file_management.ipynb)
-2. Register stacks of reshaped raw data: [alignment](https://github.com/johnpcooper/byc/blob/master/notebooks/vertical_line_detection_scratch.ipynb)
+2. Register stacks of reshaped raw data. This notebook is an expansion of the alignment tutorial above: [alignment](https://github.com/johnpcooper/byc/blob/master/notebooks/vertical_line_detection_scratch.ipynb)
 3. Cell segementation: [segmentation](https://github.com/johnpcooper/byc/blob/master/notebooks/segmentation.ipynb)
 4. Analysis and visualization of flourescence measurements and cell cycle annotations: [standard_analysis](https://github.com/johnpcooper/byc/blob/master/notebooks/standard_analysis.ipynb)
