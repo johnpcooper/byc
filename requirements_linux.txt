@@ -1,0 +1,11 @@
+scikit-image
+scipy
+numpy
+pandas
+tifffile
+read-roi
+seaborn
+matplotlib
+ipython
+ipykernel
+jupyter

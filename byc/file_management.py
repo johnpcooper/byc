@@ -101,20 +101,21 @@ def rename_steady_state(max_n_fovs):
 
             except:
                 print(f'No fov {fov} for {base_filename}')
-                print(f'Attempted target directory: {fov_path}')
+                print(f'Attempted target path: {fov_path}')
                 pass
             
 
 def set_xy_dir_names(expt_dir, expt_name):
-    """ Return a list of xy position directory names (not paths). Rename the list of xy positions
-        that have been created in micromanager (should be Pos0, Pos1, Pos2...) to looks like
-        expt_name_xy001..."""
-
+    """ 
+    Return a list of xy position directory names (not paths). Rename the list of xy positions
+    that have been created in micromanager (should be Pos0, Pos1, Pos2...) to look like
+    expt_name_xy01...
+    """
     xy = 0
     xy_dir_names = []
     for pos_dir in os.listdir(expt_dir):
         xy_dir_name = f'{expt_name}_xy{xy:02}'
-        try:        
+        try:
             os.rename(f'{expt_dir}//{pos_dir}', f'{expt_dir}//{expt_name}_xy{xy:02}')
         except:
             print(f"File already exists {xy_dir_name}")
@@ -124,15 +125,23 @@ def set_xy_dir_names(expt_dir, expt_name):
         
     return xy_dir_names
 
-def reshape_timepoints(xy_dir_names, expt_dir, n_channels):
-    
-    """ Rename and combine individual channel .tifs for each timepoint in the experiment. Output
-        Shape is (height, width, n_channels). This allows files to be ready and aligned using 
-        byc alignment code. """
-    
+def reshape_timepoints(xy_dir_names, expt_dir, n_channels):    
+    """ 
+    For each xy FOV, combine individual channel .tifs for each timepoint. Output
+    Shape is (height, width, n_channels). This allows files to be read and aligned using 
+    byc.alignment.
+    """    
     for xy_dir_name in xy_dir_names:
 
-        fns_list = os.listdir(f'{expt_dir}//{xy_dir_name}')
+        all_fns_list = os.listdir(f'{expt_dir}//{xy_dir_name}')
+        fns_list = []
+        # Refine files in xy dir to only .tifs, there will likely
+        # be some .txt etc. metadata in the directory that we don't need
+        for fn in all_fns_list:
+            if fn.endswith('.tif'):
+                fns_list.append(fn)
+            else:
+                pass
 
         timepoint = 0
         for i in range(0, len(fns_list), n_channels):
@@ -153,16 +162,16 @@ def reshape_timepoints(xy_dir_names, expt_dir, n_channels):
 
             timepoint += 1
             
-def rename_byc():
+def rename_byc(**kwargs):
     
-    expt_dir = select_directory("Choose the directoy holding the micromanager output of your byc experiment")
-    pos_dir_list = os.listdir(expt_dir)
-    # Channels as they are named in the micromanager .tifs
-    channels = ['Brightfield', 'YFP', 'RFP']
-    # Channels as I want to name them in the output stacks
-    fluor_names = ['bf', 'yfp', 'dsred']
-    channel_dict = dict(zip(fluor_names, channels))
-    expt_name = '20200214_byc'
+    expt_dir = kwargs.get('expt_dir', None)
+    if expt_dir == None:
+        expt_dir = select_directory("Choose the directoy holding the micromanager output of your byc experiment")
+    else:
+        pass
+    expt_name = kwargs.get('expt_name', expt_dir.split(sep='/')[-1])
+    channels = kwargs.get('channels', ['bf', 'yfp', 'dsred'])
+    assert type(channels) == list, "channels must be a list of strings"
     n_channels = len(channels)
     
     xy_dir_names = set_xy_dir_names(expt_dir, expt_name)

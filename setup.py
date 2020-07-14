@@ -12,7 +12,7 @@ def read(fname):
 
 setup(
     name = "byc",
-    version = "1.1.0",
+    version = "2.0.0",
     author = "John P. Cooper",
     author_email = "jpcoope@utexas.edu",
     description = ("Codebase for analyzing imaging data from budding yeast chemostat"),
@@ -20,7 +20,7 @@ setup(
     keywords = "image processing single cell biochemistry microfluidics imaging",
     url = "https://github.com/johnpcooper/byc",
     packages=find_packages(),
-    package_data={'byc': ['*.csv']}, # this means that when byc is installed,
+    package_data={'byc': ['*.csv', '*.json']}, # this means that when byc is installed,
     # all the .csv files in the package directory for byc will be copied along
     # with all the .py files in the package directory
     include_package_data=True,

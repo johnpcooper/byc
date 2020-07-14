@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -5,19 +7,24 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 import tkinter.filedialog as tkdia
 
-plt.style.use('default')
-matplotlib.rcParams['font.sans-serif'] = 'Arial'
+from byc import constants
 
-class Cell_Data(object):
-    
-    """ Doc Strings """
-    
-    def __init__(self):
+class Cell_Data(object):    
+    """
+    Upon instantiation, ask the user to choose a master index for the experiment
+    they want to create trace dataframes for.  
+    """       
+    def __init__(self, manual_select=True):
         
-        # set the files that will be used for every cell analyzed
-        self.master_cells_df = self.set_master_cells_df("Choose the .csv for the master index of this experiment")
+        filename = "20200221_byc_master_index.csv"
+        self._example_master_cells_df_path = os.path.join(constants.package_path, filename)
+
+        if manual_select:
+            # set the files that will be used for every cell analyzed
+            self.master_cells_df = self.set_master_cells_df("Choose the .csv for the master index of this experiment")
+        else:
+            self.master_cells_df = pd.read_csv(self._example_master_cells_df_path)
         self.cells_dfs = self.set_cells_dfs(self.master_cells_df)
-        
         # set lists containing senescent slice for each cell
         self.senescent_slices = self.set_senenescent_slices(self.cells_dfs)
         
@@ -26,10 +33,10 @@ class Cell_Data(object):
 
     
     def set_fp(self, prompt):
-
-        """ Return the path to a file of interest. Call with the prompt you would like to 
-            display in the dialog box."""
-
+        """
+        Return the path to a file of interest. Call with the prompt you would like to 
+        display in the dialog box.
+        """
         # create the dialog box and set the fn
         root = tk.Tk()
         fp = tkdia.askopenfilename(parent=root, title=prompt)
@@ -39,9 +46,9 @@ class Cell_Data(object):
         return fp # return the path to the file you just selected
 
     def set_master_cells_df(self, prompt):
-
-        """ Return a dataframe read from the master cells index .csv"""
-
+        """
+        Return a dataframe read from the master cells index .csv
+        """
         # define the path to the index .csv
         master_cells_fp = self.set_fp(prompt)
         # define the filename for the master expt index
@@ -50,31 +57,38 @@ class Cell_Data(object):
         return master_cells_df
 
     def set_cells_dfs(self, master_cells_df):
-
-        """ Return a list of sub-dataframes of the master_cells_df. The sub-dataframes
-           contain data for only one cell according to its sub_coord """
-
+        """
+        Return a list of sub-dataframes of the master_cells_df. The sub-dataframes
+        contain data for only one cell according to its cell_index
+        """
         # create the cells_dfs list
         cells_dfs = []
 
         # add to the cells_dfs a dataframe at index i for every
-        # unique value in the master_cells_df['sub_coord']
-        for i in master_cells_df['sub_coord'].unique():
+        # unique value in the master_cells_df['cell_index'] or 
+        # 'sub_coord' if that's in the master index
+        if 'sub_coord' in master_cells_df.columns:
+            cell_index_colname = 'sub_coord'
+        elif 'cell_index' in master_cells_df.columns:
+            cell_index_colname = 'cell_index'
+        else:
+            print("Couldn't find cell_index or sub_coord column in master_index_df")
+        for i in master_cells_df[cell_index_colname].unique():
             # set the logic mask to a sub-dataframe of master_cells_df containing
             # only values whose 'sub_coord' value is value
-            print("value is ", i)
-            logic_mask = (master_cells_df['sub_coord'] == i)
+            print(f"Slicing master index df for cell {i}")
+            logic_mask = (master_cells_df[cell_index_colname] == i)
             cells_dfs.append(master_cells_df[logic_mask])
             print("cells_dfs is now %d elements long" % len(cells_dfs))
 
         return cells_dfs
     
-    def set_senenescent_slices(self, cells_dfs):
-        
-        """ Return a list of number indicating where along the expt each cell went
-            senescent (ended its last division). If senescence wasn't observed
-            for the cell, then False will be added to the list. """
-        
+    def set_senenescent_slices(self, cells_dfs):        
+        """
+        Return a list of number indicating where along the expt each cell went
+        senescent (ended its last division). If senescence wasn't observed
+        for the cell, then False will be added to the list.
+        """        
         senescent_slices = []
         
         for cell_index in range(0, len(cells_dfs)):
@@ -105,11 +119,11 @@ class Cell_Data(object):
         return senescent_slices
 
     def set_raw_cell_trace_dfs(self, cells_dfs, senescent_slices):
-
-        """ Return two lists of dataframes (dsred, yfp) containing traces for each cell 
-            in cells_dfs. The path for each trace is constructed based on how roi_management names
-            and saves tif stacks. """
-
+        """
+        Return two lists of dataframes (dsred, yfp) containing traces for each cell 
+        in cells_dfs. The path for each trace is constructed based on how roi_management names
+        and saves tif stacks.
+        """
         cell_traces_dsred = []
         cell_traces_yfp = []
 
@@ -117,13 +131,20 @@ class Cell_Data(object):
 
             cell_df = cells_dfs[cell_index]
 
+            if 'sub_coord' in cell_df.columns:
+                cell_index_colname = 'sub_coord'
+            elif 'cell_index' in cell_df.columns:
+                cell_index_colname = 'cell_index'
+            else:
+                print("Couldn't find cell_index or sub_coord column in master_index_df")
+
             path = str(cell_df['path'][cell_df.index.min()] + "\\")
             expt_date = cell_df['date'][cell_df.index.min()]
             expt_type = cell_df['expt_type'][cell_df.index.min()]
             xy = cell_df['xy'][cell_df.index.min()]
-            sub_coord = cell_df['sub_coord'][cell_df.index.min()]
+            cell_index = cell_df[cell_index_colname][cell_df.index.min()]
 
-            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy).zfill(2), str(sub_coord).zfill(3)))
+            stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy).zfill(2), str(cell_index).zfill(3)))
 
             # read the .csv containing measurements
             cell_trace_dsred_path = str(path + stack_title + "_dsred_stack.csv")
@@ -148,11 +169,11 @@ class Cell_Data(object):
     
 
 # define a list that will be filled with indices of cells that are in the same slice
-def sliding_median_window(dataframe, window_width):
-    
-    """ Return the input DataFrame with a column ("sliding_median") added containing a 
-        sliding mean sampling window with width specified. """
-    
+def sliding_median_window(dataframe, window_width):    
+    """
+    Return the input DataFrame with a column ("sliding_median") added containing a 
+    sliding mean sampling window with width specified.
+    """    
     dataframe.loc[:, 'sliding_median'] = np.zeros(len(dataframe['Slice']))
     
     for i in dataframe.index:
@@ -172,10 +193,10 @@ def sliding_median_window(dataframe, window_width):
 
 # define a list that will be filled with indices of cells that are in the same slice
 def sliding_mean_window(dataframe, window_width):
-    
-    """ Return the input DataFrame with a column ("sliding_mean") added containing a 
-        sliding mean sampling window with width specified. """
-    
+    """
+    Return the input DataFrame with a column ("sliding_mean") added containing a 
+    sliding mean sampling window with width specified.
+    """    
     dataframe.loc[:, 'sliding_mean'] = np.zeros(len(dataframe['Slice']))
     
     for i in dataframe.index:
@@ -195,10 +216,10 @@ def sliding_mean_window(dataframe, window_width):
 
 # define a list that will be filled with indices of cells that are in the same slice
 def diameter_sliding_window(dataframe, window_width):
-    
-    """ Return the input DataFrame with a column ("cell_diamter_sliding") added containing a 
-        sliding mean sampling window with width specified. """
-    
+    """ 
+    Return the input DataFrame with a column ("cell_diamter_sliding") added containing a 
+    sliding mean sampling window with width specified.
+    """    
     dataframe.loc[:, 'cell_diameter_sliding'] = np.zeros(len(dataframe['Slice']))
     
     for i in dataframe.index:
@@ -217,10 +238,10 @@ def diameter_sliding_window(dataframe, window_width):
     return dataframe
 
 def correct_time(dataframe, collection_interval):        
-    
-    """ Return a DataFrame of the DataFrame passed to correct_time() with
-        columns added for minutes and hours according to the collection_interval argument """
-    
+    """
+    Return a DataFrame of the DataFrame passed to correct_time() with
+    columns added for minutes and hours according to the collection_interval argument
+    """    
     if "slices_to_senescence" in dataframe.columns:        
         dataframe.loc[:, 'minutes_to_senescence'] = dataframe['slices_to_senescence'] * collection_interval
         dataframe.loc[:, 'hours_to_senescence'] = dataframe['minutes_to_senescence'] / 60
@@ -234,7 +255,9 @@ def correct_time(dataframe, collection_interval):
     return dataframe
 
 def cell_diameter(dataframe):
-    """ Return a DataFrame with added column for cell diameter in um """
+    """
+    Return a DataFrame with added column for cell diameter in um
+    """
     
     dataframe.loc[:, 'cell_diameter(um)'] = 0.44*(np.sqrt(dataframe['Area'] / np.pi))
     return dataframe
@@ -274,9 +297,10 @@ def complete_dataframe(dsred_df, yfp_df, cell_number, window_width, collection_i
     return final
 
 def set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs):
-    
-    """ Return a list of processed dataframes for each cell trace. The processed
-        dataframes have added columns like adjusted time, ratios, etc. """
+    """ 
+    Return a list of processed dataframes for each cell trace. The processed
+    dataframes have added columns like adjusted time, ratios, etc.\
+    """
     
     processed_trace_dfs = []
     
@@ -292,9 +316,9 @@ def set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_ds
         
     return processed_trace_dfs
 
-def set_processed_traces(window_width, collection_interval):
+def set_processed_traces(window_width, collection_interval, manual_select=True):
     
-    cd = Cell_Data()
+    cd = Cell_Data(manual_select)
     master_index = cd.master_cells_df
     cells_dfs = cd.cells_dfs
     raw_dsred_trace_dfs = cd.raw_dsred_trace_dfs

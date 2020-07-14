@@ -1,13 +1,16 @@
 import os
 import pandas as pd
 
+from byc import constants
+
 class dataBase():
-    _byc_data_dir = r'C:\Users\John Cooper\Projects\byc_data'
+    
+    _byc_data_dir = constants.byc_data_dir
     # Set steady state data dir
     _ss_data_dir = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images"
     # Set flow cytometry data dir
     _fc_dat_dir = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images"
-    _byc_trace_database_dir = r'C:\Users\John Cooper\Projects\byc\docs'
+    _byc_trace_database_path = constants.database_paths['cell_trace_db_path']
 
     def __init__(self):
 
@@ -15,7 +18,7 @@ class dataBase():
         expt_paths = [f'{self.byc_data_dir}\\{folder}' for folder in expt_names]
         byc_expt_dirs_dict = dict(zip(expt_names, expt_paths))  
         self._byc_expt_dirs_dict = byc_expt_dirs_dict
-        self.trace_database_path = f'{self._byc_trace_database_dir}\\cell_trace_database.csv'
+        self.trace_database_path = self._byc_trace_database_path
         self.trace_database_df = pd.read_csv(self.trace_database_path)
 
     @property
@@ -50,9 +53,9 @@ class dataBase():
         cols = ['expt_name', 'trace_path', 'chase_index']
         trace_db_df = pd.DataFrame(columns = cols)
         if overwrite:
-            writepath = f'{self._byc_trace_database_dir}\\cell_trace_database.csv'
+            writepath = self._byc_trace_database_path
         else:
-            writepath = f'{self._byc_trace_database_dir}\\cell_trace_database_new.csv'
+            writepath = self._byc_trace_database_path
 
         trace_db_df.to_csv(write_path, index=False)
         self.trace_database_df = pd.read_csv(writepath)

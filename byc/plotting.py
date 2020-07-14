@@ -400,3 +400,4 @@ def plot_auto_manual_corr(neighbor_df, cell_index, expt_name):
                 fontsize=8)
 
     fig.savefig(f'{filename}.{filetype}')
+ 

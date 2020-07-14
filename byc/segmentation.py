@@ -66,7 +66,7 @@ class Cell_Stack(object):
             expt_path = master_cells_df.path[cell_index]
             expt_date = int(master_cells_df.date[cell_index])
             expt_type = master_cells_df.expt_type[cell_index]
-            cell_rois_fp = f"{expt_path}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(2)}_crop_rois.zip"
+            cell_rois_fp = f"{expt_path}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(3)}_crop_rois.zip"
 
             # cell_rois is an OrderedDict so I split the object up and put it in a dataframe 
             # to get relevant data out of it
@@ -277,8 +277,11 @@ def save_cell_stacks():
     
     threshold_channel = input("Choose channel to use for thresholding: ")
     cs = Cell_Stack(threshold_channel=threshold_channel)
-    
-    for cell_index in cs.master_cells_df.sub_coord:
+    try:
+        cell_indices = cs.master_cells_df.sub_coord
+    except:
+        cell_indices = cs.master_cells_df.cell_index
+    for cell_index in cell_indices:
     
         # Run all the cropping and processing method of Cell_Stack on the cell
         # with cell_index
@@ -294,7 +297,7 @@ def save_cell_stacks():
         xy = str(int(cs.master_cells_df.xy[cell_index]))
 
         for channel_name, stack in resized_channels_dict.items():
-            filename = f'{expt_date}_{expt_type}_xy{xy}_cell{cell_index}_{channel_name}_stack.tif'
+            filename = f'{expt_date}_{expt_type}_xy{str(xy).zfill(2)}_cell{str(cell_index).zfill(3)}_{channel_name}_stack.tif'
             save_path = f'{expt_path}//{filename}'
             try:
 
