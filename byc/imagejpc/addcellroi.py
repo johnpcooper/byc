@@ -50,15 +50,10 @@ def find_cell_row(cell_roi_df, master_index_df):
 def merge_cell_to_index(cell_roi_df, master_index_df, path, row, write=True):
     """
     Return the master_index_df with added cell_roi_df
-    data
+    data. Overwrites values that are already in 
+    existing master index for common columns
     """
-    redundant_cols = list(cell_roi_df.columns.intersection(master_index_df.columns))
-    cols_to_add = []
-    for col in list(cell_roi_df.columns):
-        if col in redundant_cols:
-            pass
-        else:
-            cols_to_add.append(col)
+    cols_to_add = cell_roi_df.columns
 
     for col in cols_to_add:
         master_index_df.loc[row, col] = cell_roi_df.loc[0, col]
