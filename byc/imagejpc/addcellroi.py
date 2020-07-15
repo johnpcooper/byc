@@ -69,6 +69,15 @@ def merge_cell_to_index(cell_roi_df, master_index_df, path, row, write=True):
     else:
         return master_index_df
 
+def get_exptdir(active_imp_path):
+
+    exptdir = os.path.abspath(os.path.join(os.path.dirname(active_imp_path), '..'))
+    if os.path.exists(exptdir):
+        return exptdir
+    else:
+        print(f"exptdir for active_imp_path:\n{active_imp_path}\ndoes not exist at\n{exptdir}")
+        return None
+
 def find_cell_master_index(cell_roi_df, active_imp_path):
     """
     Return the master_index_df and its path that has
@@ -77,25 +86,29 @@ def find_cell_master_index(cell_roi_df, active_imp_path):
     """
     # Get the path to the directory holding the directory
     # holding the active imp
-    exptdir = os.path.abspath(os.path.join(os.path.dirname(active_imp_path), '..'))
+    exptdir = get_exptdir(active_imp_path)
     # Get all files that look like master indexes in that
     # exptdir (e.g. data/20200221_byc/20200221_byc_master_index.csv)
     master_index_paths = utilities.get_master_index_paths(exptdir)
     matched_paths = []
     matched_dfs = []
     matched_rows = []
-    for i, master_index_df in enumerate([pd.read_csv(path) for path in master_index_paths]):
-        # Scan through the master dfs found to look for 
-        # ones that have a row that matches 
-        row = find_cell_row(cell_roi_df, master_index_df)        
-        if row != None and type(row) == int:
-            matched_paths.append(master_index_paths[i])
-            matched_dfs.append(master_index_df)
-            matched_rows.append(row)
-        else:
-            pass
+    if master_index_paths != None:
+        for i, master_index_df in enumerate([pd.read_csv(path) for path in master_index_paths]):
+            # Scan through the master dfs found to look for 
+            # ones that have a row that matches 
+            row = find_cell_row(cell_roi_df, master_index_df)        
+            if row != None and type(row) == int:
+                matched_paths.append(master_index_paths[i])
+                matched_dfs.append(master_index_df)
+                matched_rows.append(row)
+            else:
+                pass
+    else:
+        print(f"No master_index_dfs found for cell_roi_df in path:\n{exptdir}")
+        return None, None, None
 
-    assert len(matched_dfs) == len(matched_dfs) == len(matched_rows), "paths and dfs list lengths don't match"
+    assert len(matched_dfs) == len(matched_dfs) == len(matched_rows), "paths and dfs list lengths do not match"
     if len(matched_dfs) == 1:
         print(f"Found cell match at row {matched_rows[0]} in master index:\n{matched_paths[0]}")
         return matched_dfs[0], matched_paths[0], matched_rows[0]
@@ -119,19 +132,22 @@ def record_cell_roi_set(cell_index,
     
     write = kwargs.get('write', True)
     imp_filename = utilities.filename_from_path(active_imp_path)
+    exptdir = get_exptdir(active_imp_path)
     # Extract some information from the active image filename
     xy = int(imp_filename[imp_filename.rindex('xy') + 2: imp_filename.rindex('xy') + 4])
     date = imp_filename[0:8]
 
     # Create path names relative to byc source/data directory
-    try:
-        active_imp_rel_path = active_imp_path.replace(constants.byc_data_dir, '')
-        roi_set_rel_path = roi_set_save_path.replace(constants.byc_data_dir, '')
-    except:
-        print(f"Couldn't find byc_data_dir ({constants.byc_data_dir}) in path:/n{active_imp_rel_path}")
-        print(f"\nMake sure you're analyzing data in byc_data_dir")
-        pass
     
+    active_imp_rel_path = utilities.get_relpath(active_imp_path)
+    roi_set_rel_path = utilities.get_relpath(roi_set_save_path)
+    if active_imp_rel_path == None and roi_set_rel_path == None:
+        print(f"Could not find byc_data_dir ({constants.byc_data_dir}) in path:/n{active_imp_rel_path}")
+        print(f"\nMake sure you're analyzing data in byc_data_dir")
+    else:
+       pass
+
+
     values = [cell_index,
               active_imp_path,
               roi_set_save_path,
@@ -147,7 +163,7 @@ def record_cell_roi_set(cell_index,
             'end_event_type',
             'xy',
             'date',
-            'active_imp_rel_path',
+            '{}_active_imp_rel_path'.format(roi_set_type),
             '{}_roi_set_rel_path'.format(roi_set_type)]
 
     cell_roi_df = pd.DataFrame(dict(zip(keys, values)), index=[0])
@@ -165,11 +181,13 @@ def record_cell_roi_set(cell_index,
         row = mdf.index.max() + 1
         merge_cell_to_index(cell_roi_df, master_index_df, path, row)
         print("Appended cell to existing master index, user needs to update other info")
-    # If there's no dataframe and no row found, then ask the user to
-    # create one
+    # If there's no dataframe and no row found, create a blank one and
+    # merge the cell's data with it
     elif mdf.empty == True and path == None and row == None:
-        pass
-        print(f"You need to create a master_index.csv for this experiment in dir:/n{exptdir}")
+        # Create a new master, add the cell to it and save
+        master_index_df, path = utilities.make_blank_master_index(exptdir, date)
+        row = 0
+        merge_cell_to_index(cell_roi_df, master_index_df, path, row)
     if write:
         fn = f'{date}_byc_xy{str(xy).zfill(2)}cell{str(cell_index).zfill(3)}_{roi_set_type}_rois_df.csv'
         writepath = os.path.join(active_imp_dir, fn)

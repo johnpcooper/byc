@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-from byc import constants
+from byc import constants, utilities
 
 class dataBase():
     
@@ -50,7 +50,8 @@ class dataBase():
         to the initialized df. 
         """
         # 
-        cols = ['expt_name', 'trace_path', 'chase_index']
+        cols = ['expt_name', 'trace_path', 'trace_relpath',
+                'chase_index', 'date']
         trace_db_df = pd.DataFrame(columns = cols)
         if overwrite:
             writepath = self._byc_trace_database_path
@@ -60,16 +61,20 @@ class dataBase():
         trace_db_df.to_csv(write_path, index=False)
         self.trace_database_df = pd.read_csv(writepath)
         
-    def add_expt_to_trace_database(self, cell_trace_df_paths, expt_name, chase_index):
+    def add_expt_to_trace_database(self, cell_trace_df_paths, expt_name, chase_index, date):
         # Use the list of file names chosen by the user
         # to update a .csv with each row a different 
         # byc_expt_name (from byc_expt_dirs_dict)
 
         # This will broadcast the expt_name column (which starts as just one
         # row) to the length of the longest following column added
+        # relpaths = utilities.get_rel
+        relpaths = [utilities.get_relpath(path) for path in cell_trace_df_paths]
         trace_df = pd.DataFrame({'expt_name': expt_name,
                                  'trace_path': cell_trace_df_paths,
-                                 'chase_index': chase_index})
+                                 'trace_relpath': relpaths,
+                                 'chase_index': chase_index,
+                                 'data': date})
         self.trace_database_df = pd.concat([self.trace_database_df, trace_df], ignore_index=True, sort=False)
         self.trace_database_df.to_csv(self.trace_database_path, index=False)
 
@@ -79,10 +84,15 @@ class dataBase():
         # return it.
         try:
             expt_df = self.trace_database_df[self.trace_database_df.expt_name == expt_name]
-            traces_list = [pd.read_csv(trace_path) for trace_path in expt_df.trace_path]
+            traces_list = [pd.read_csv(os.path.join(constants.byc_data_dir, path)) for path in expt_df.trace_relpath]
         except:
-            print(f'Could not find .csvs for expt {expt_name}')
-            traces_list = None
+            print(f"Couldn't find trace .csvs for expt {expt_name} in constants.byc_data_dir\nChecking in absolute path")
+            try:
+                traces_list = [pd.read_csv(os.path.abspath(path)) for path in expt_df.trace_path]
+            except:
+                print(f'Could not find .csvs for expt {expt_name} in absolute paths')
+                traces_list = None
+
         return traces_list
 
     def update_expt_trace_dfs(self, new_dfs_list, expt_name, **kwargs):

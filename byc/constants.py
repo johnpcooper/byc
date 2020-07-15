@@ -27,4 +27,26 @@ source_path = source_path()
 database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_database.csv'),
                   'cell_roi_db_path': os.path.join(package_path, 'cell_roi_database.json')}
 
-byc_data_dir = os.path.join(source_path, 'data')
+byc_data_dir = os.path.join(source_path, 'data\\')
+legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
+
+master_index_cols = ['date',
+                     'expt_type',
+                     'channels_collected',
+                     'collection_interval'
+                     'channel_exposures',
+                     r'tetracycline[]',
+                     'tetracycline_perfusion_frames',
+                     'genetic_background',
+                     'construct',
+                     'expr_type',
+                     'path',
+                     'xy',
+                     'cell_index',
+                     'death',
+                     'sen_start',
+                     'sen_end',
+                     'note',
+                     'late_daughter_shape',
+                     'Pos',
+                     'dist_from_sen']
