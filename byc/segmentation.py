@@ -1,3 +1,5 @@
+import os
+
 import tifffile as tf
 import tkinter as tk
 import tkinter.filedialog as dia
@@ -9,6 +11,8 @@ from skimage.io import imsave, concatenate_images
 from skimage.filters import threshold_otsu
 from skimage import img_as_uint
 from read_roi import read_roi_file, read_roi_zip
+
+from byc import constants, utilities
 
 class Cell_Stack(object):
     """
@@ -51,7 +55,23 @@ class Cell_Stack(object):
         master_cells_df = pd.read_csv(master_cells_fp)
 
         return master_cells_df
-    
+
+    def get_compartment_dir(self, master_cells_df, cell_index):
+        # Works on older formatted master indexes
+        if 'path' in master_cells_df.columns:
+            compartment_dir = master_cells_df.path[cell_index]
+        # Works for newer formatted master indexes where
+        # compartment_dir and compartment_reldir are determined automatically
+        # during addition of various cell roi types
+        elif 'compartment_reldir' in master_cells_df.columns:
+            compartment_reldir = master_cells_df.compartment_reldir[cell_index]
+            compartment_dir = os.path.join(constants.byc_data_dir, compartment_reldir)
+        else:
+            print(f"No compartment directory in master index")
+            compartment_dir = None
+
+        return compartment_dir
+
     def set_cell_crop_roi_dfs(self, master_cells_df):
         """
         Return a list of DataFrames, one for each cell. The coordinates in each
@@ -62,11 +82,11 @@ class Cell_Stack(object):
         cell_crop_roi_dfs = []
 
         for cell_index in master_cells_df.index:
-
-            expt_path = master_cells_df.path[cell_index]
+            # 
+            compartment_dir = self.get_compartment_dir(master_cells_df, cell_index)
             expt_date = int(master_cells_df.date[cell_index])
             expt_type = master_cells_df.expt_type[cell_index]
-            cell_rois_fp = f"{expt_path}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(3)}_crop_rois.zip"
+            cell_rois_fp = f"{compartment_dir}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(3)}_crop_rois.zip"
 
             # cell_rois is an OrderedDict so I split the object up and put it in a dataframe 
             # to get relevant data out of it
@@ -96,7 +116,7 @@ class Cell_Stack(object):
                                          'height' : height})
 
             cell_crop_roi_dfs.append(cell_rois_df)        
-        #cell_rois_df.to_csv(f"{expt_path}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(2)}_crop_rois.csv")
+        
         return cell_crop_roi_dfs
     
     def set_cell_channel_stacks(self, master_cells_df, cell_index):
@@ -105,7 +125,7 @@ class Cell_Stack(object):
         read according to data in the master_cells_df
         """ 
 
-        expt_path = master_cells_df.path[cell_index]
+        compartment_dir = self.get_compartment_dir(master_cells_df, cell_index)
         expt_date = int(master_cells_df.date[cell_index])
         expt_type = master_cells_df.expt_type[cell_index]
         xy = str(int(master_cells_df.xy[cell_index]))
@@ -114,7 +134,7 @@ class Cell_Stack(object):
         self.channel_names = master_cells_df.channels_collected[cell_index].split()
 
         # Set a list of paths to the channel stacks
-        channel_stacks_fps = [f"{expt_path}\\{expt_date}_{expt_type}_xy{xy.zfill(2)}_{channel_name}_stack.tif" for channel_name in self.channel_names]
+        channel_stacks_fps = [f"{compartment_dir}\\{expt_date}_{expt_type}_xy{xy.zfill(2)}_{channel_name}_stack.tif" for channel_name in self.channel_names]
         
         print(f"Paths to channel stacks for cell {cell_index} found based on master df")
         # Let the user know which stacks were read
@@ -127,7 +147,7 @@ class Cell_Stack(object):
         return cell_channel_stacks
     
     def set_cell_cropped_stacks_dict(self, master_cells_df, cell_rois_dfs, cell_index):
-
+        print(f"Setting cell cropped stacks dict for cell: {cell_index}")
         cell_rois_df = cell_rois_dfs[cell_index]
         channel_stacks = self.set_cell_channel_stacks(master_cells_df, cell_index)
         
@@ -290,15 +310,17 @@ def save_cell_stacks():
         cs.add_cell_otsu_thresholded_stack()
         resized_channels_dict = cs.set_resized_cell_cropped_channels_dict(cs.cell_cropped_channels_dict)
 
-        # Save each stack 
-        expt_path = cs.master_cells_df.path[cell_index]
+        # Save each stack (Note: compartment_dir is the dir holding all
+        # xy FOVs for that flow compartment and therefore isolated genetic
+        # + environmental etc. condition)
+        compartment_dir = cs.get_compartment_dir(cs.master_cells_df, cell_index)
         expt_date = int(cs.master_cells_df.date[cell_index])
         expt_type = cs.master_cells_df.expt_type[cell_index]
         xy = str(int(cs.master_cells_df.xy[cell_index]))
 
         for channel_name, stack in resized_channels_dict.items():
             filename = f'{expt_date}_{expt_type}_xy{str(xy).zfill(2)}_cell{str(cell_index).zfill(3)}_{channel_name}_stack.tif'
-            save_path = f'{expt_path}//{filename}'
+            save_path = f'{compartment_dir}//{filename}'
             try:
 
                 imsave(save_path, concatenate_images(stack))

@@ -6,6 +6,10 @@ from byc import constants, utilities
 class dataBase():
     
     _byc_data_dir = constants.byc_data_dir
+    # Going to get rid of ss and fc data dirs, put every expt. directory
+    # in constants.byc_data_dir, and then distinguish expt_type by 
+    # looking in master index in primary subdirectories.
+    
     # Set steady state data dir
     _ss_data_dir = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images"
     # Set flow cytometry data dir

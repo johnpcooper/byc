@@ -58,7 +58,7 @@ def merge_cell_to_index(cell_roi_df, master_index_df, path, row, write=True):
     for col in cols_to_add:
         master_index_df.loc[row, col] = cell_roi_df.loc[0, col]
     
-    if write:        
+    if write:
         master_index_df.to_csv(path, index=False)
         print(f"Added cell info to master index and saved at\n{path}")
     else:
@@ -104,15 +104,19 @@ def find_cell_master_index(cell_roi_df, active_imp_path):
         return None, None, None
 
     assert len(matched_dfs) == len(matched_dfs) == len(matched_rows), "paths and dfs list lengths do not match"
+
     if len(matched_dfs) == 1:
         print(f"Found cell match at row {matched_rows[0]} in master index:\n{matched_paths[0]}")
         return matched_dfs[0], matched_paths[0], matched_rows[0]
+
     elif len(matched_dfs) == 0:
         print(f"No master_index_dfs found for cell_roi_df in path:\n{exptdir}")
         return None, None, None
+
     elif len(matched_dfs) > 1:
         print(f"Multiple master_index_dfs found for cell_roi_df in path:\n{exptdir}")
         return None, None, None
+
     else:
         print("Unknown error")
         return None, None, None
@@ -126,8 +130,16 @@ def record_cell_roi_set(cell_index,
                       **kwargs):
     
     write = kwargs.get('write', True)
+    channels_collected = kwargs.get('channels_collected', 'bf yfp dsred')
     imp_filename = utilities.filename_from_path(active_imp_path)
     exptdir = get_exptdir(active_imp_path)
+    expt_type = 'byc'
+    # Note: compartment_dir is the dir holding all
+    # xy FOVs for that flow compartment and therefore 
+    # holds all data for a single isolated genetic
+    # + environmental etc. condition
+    compartment_dir = os.path.dirname(active_imp_path)
+    compartment_reldir = utilities.get_relpath(compartment_dir)
     # Extract some information from the active image filename
     xy = int(imp_filename[imp_filename.rindex('xy') + 2: imp_filename.rindex('xy') + 4])
     date = imp_filename[0:8]
@@ -139,11 +151,16 @@ def record_cell_roi_set(cell_index,
     if active_imp_rel_path == None and roi_set_rel_path == None:
         print(f"Could not find byc_data_dir ({constants.byc_data_dir}) in path:/n{active_imp_rel_path}")
         print(f"\nMake sure you're analyzing data in byc_data_dir")
+
     else:
        pass
 
 
     values = [cell_index,
+              expt_type,
+              channels_collected,
+              compartment_dir,
+              compartment_reldir,
               active_imp_path,
               roi_set_save_path,
               end_event_type,
@@ -153,13 +170,17 @@ def record_cell_roi_set(cell_index,
               roi_set_rel_path]
 
     keys = ['cell_index',
-            'active_imp_abs_path',
-            '{}_roi_set_abs_path'.format(roi_set_type),
+            'expt_type',
+            'channels_collected',
+            'compartment_dir',
+            'compartment_reldir',
+            'active_imp_path',
+            '{}_roi_set_path'.format(roi_set_type),
             'end_event_type',
             'xy',
             'date',
-            '{}_active_imp_rel_path'.format(roi_set_type),
-            '{}_roi_set_rel_path'.format(roi_set_type)]
+            '{}_active_imp_relpath'.format(roi_set_type),
+            '{}_roi_set_relpath'.format(roi_set_type)]
 
     cell_roi_df = pd.DataFrame(dict(zip(keys, values)), index=[0])
     # Find the master_index.csv df for this cell and add it to the 
@@ -183,6 +204,7 @@ def record_cell_roi_set(cell_index,
         master_index_df, path = utilities.make_blank_master_index(exptdir, date)
         row = 0
         merge_cell_to_index(cell_roi_df, master_index_df, path, row)
+
     if write:
         fn = f'{date}_byc_xy{str(xy).zfill(2)}cell{str(cell_index).zfill(3)}_{roi_set_type}_rois_df.csv'
         writepath = os.path.join(active_imp_dir, fn)
