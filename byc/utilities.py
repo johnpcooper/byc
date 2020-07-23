@@ -1,4 +1,5 @@
 import os
+import re
 
 import tkinter as tk
 import tkinter.filedialog as dia
@@ -69,6 +70,7 @@ def get_master_index_paths(exptdir):
     else:
         print(f"Could not find any master_index.csv type files in exptdir:\n{exptdir}")
         return None
+
 def make_blank_master_index(exptdir, date, write=True):
     """
     Create a .csv from a standard, empty
@@ -114,3 +116,67 @@ def get_relpath(abspath):
     else:
         print(f"No match found after looking for:\b{possibles}\nin:\n{abspath}")
         return relpath
+
+def get_master_index_tags(match):
+    """
+    Return a list of words in the filename
+    that are not "master_index" or ".csv"
+    """
+    tags = []
+
+    if match != None:
+        modifiers = [match.group(1), match.group(3)]
+
+        for mod in modifiers:
+            split_mod = mod.split('_')
+
+            for sm in split_mod:
+                if sm != '':
+                    tags.append(sm)
+
+    if len(tags) == 0:
+        print(f'No tags found in string: {match.string}')
+
+    return tags
+
+def get_all_master_index_paths(rootdir=constants.byc_data_dir, get_tags=False):
+    """
+    Return the list of paths to all files that match the
+    master index pattern in constants.byc_data_dir (recursive
+    search)
+    """
+    pattern = constants.patterns.master_index_file
+    tags_lists = []
+    filepaths = []
+
+    for dirpath, dirnames, filenames in os.walk(constants.byc_data_dir):   
+
+        for filename in filenames:
+            match = re.search(pattern, filename)
+
+            if match:
+                filepath = os.path.join(dirpath, filename)
+
+                if os.path.exists(filepath):
+                    filepaths.append(filepath)
+                    tags= get_master_index_tags(match)
+                    tags_lists.append(tags)
+
+    if len(filepaths) == 0:
+        print(f"No master index paths found in rootdir:\n{rootdir}")
+
+    if get_tags:
+        return filepaths, tags_lists
+    else:
+        return filepaths
+
+def get_all_master_index_dfs(**kwargs):
+    """
+    Return a list of dataframes made by reading
+    csvs at each path returned by get_all_master_index_paths
+    """
+    master_index_paths = kwargs.get('master_index_paths',
+                                    get_all_master_index_paths())
+
+    dfs = [pd.read_csv(path) for path in master_index_paths if pd.read_csv(path).empty == False]
+    return dfs

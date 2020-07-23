@@ -3,27 +3,31 @@ import pandas as pd
 
 from byc import constants, utilities
 
-class dataBase():
-    
+class DataBase():
+    """
+    This class is the portal through which all data
+    in this project can be accessed. Ultimately, 
+    constants.byc_data_dir will contain flow, steady
+    state imaging, and other kinds of data sets. 
+
+    Each experiment directory (eg. '20200320_byc') will 
+    contain a master index file (eg. '20200320_byc_master_index.csv').
+    This file is used by database.DataBase to find and annotate
+    data in that experiment directory
+    """
     _byc_data_dir = constants.byc_data_dir
     # Going to get rid of ss and fc data dirs, put every expt. directory
     # in constants.byc_data_dir, and then distinguish expt_type by 
-    # looking in master index in primary subdirectories.
-    
-    # Set steady state data dir
-    _ss_data_dir = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images"
-    # Set flow cytometry data dir
-    _fc_dat_dir = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images"
+    # looking in master index in primary subdirectories.    
     _byc_trace_database_path = constants.database_paths['cell_trace_db_path']
 
     def __init__(self):
 
         expt_names = os.listdir(self.byc_data_dir)
         expt_paths = [f'{self.byc_data_dir}\\{folder}' for folder in expt_names]
-        byc_expt_dirs_dict = dict(zip(expt_names, expt_paths))  
-        self._byc_expt_dirs_dict = byc_expt_dirs_dict
         self.trace_database_path = self._byc_trace_database_path
         self.trace_database_df = pd.read_csv(self.trace_database_path)
+        self.master_index_dfs_dict = self.get_master_index_dfs_dict()
 
     @property
     def byc_data_dir(self):
@@ -34,10 +38,6 @@ class dataBase():
         self._byc_data_dir = byc_data_dir
 
     @property
-    def byc_expt_dirs_dict(self):
-        return self._byc_expt_dirs_dict
-
-    @property
     def trace_database_df(self):
         return self._trace_database_df
 
@@ -46,6 +46,33 @@ class dataBase():
         # Can set constraints here for making sure 
         # self.trace_database_df is set appropriately
         self._trace_database_df = trace_database_df
+
+    def get_master_index_dfs_dict(self):
+        """ 
+        Return a dictionary where each value is
+        a dataframe created from each master index
+        file identified in constants.byc_data_dir
+        and each key is an identifier based on the
+        name of that master index.
+
+        For a typical byc experiment, I create a
+        separate master index for each flow
+        compartment imaged. This is also how the
+        imagejpc.addcellroi script works
+
+        This will serve as the foundation for a more final
+        master index database, where each row is a unique
+        master index with its relpath recorded and other 
+        information extracted from the master index df
+        itself recorded in its columns (say plasmid, expr_type
+        tet_perfusion_frames, etc.)
+        """
+        paths, tags_list = utilities.get_all_master_index_paths(get_tags=True)
+        dfs = utilities.get_all_master_index_dfs()
+        keys = ['_'.join(tags) for tags in tags_list]
+
+        master_index_dfs_dict = dict(zip(keys, dfs))
+        return master_index_dfs_dict
 
     def initialize_cell_trace_database(self, overwrite=True):
         """
@@ -84,8 +111,7 @@ class dataBase():
 
     def get_cell_trace_dfs(self, expt_name):
         # read the list of cell trace .csv paths in 
-        # expt_dirs_dict into a list of dataframes and
-        # return it.
+        # into a list of dataframes and return it.
         try:
             expt_df = self.trace_database_df[self.trace_database_df.expt_name == expt_name]
             traces_list = [pd.read_csv(os.path.join(constants.byc_data_dir, path)) for path in expt_df.trace_relpath]
@@ -126,4 +152,4 @@ class dataBase():
             writepath = writepaths[i]
             df.to_csv(writepath, index=False)
 
-byc_database = dataBase()
+byc_database = DataBase()
