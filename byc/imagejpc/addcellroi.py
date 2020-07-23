@@ -128,7 +128,7 @@ def record_cell_roi_set(cell_index,
                       roi_set_type,
                       active_imp_dir,
                       **kwargs):
-    
+
     write = kwargs.get('write', True)
     channels_collected = kwargs.get('channels_collected', 'bf yfp dsred')
     imp_filename = utilities.filename_from_path(active_imp_path)
