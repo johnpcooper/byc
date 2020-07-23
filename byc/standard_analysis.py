@@ -130,7 +130,7 @@ class Cell_Data(object):
         for cell_index in range(0, len(cells_dfs)):
 
             cell_df = cells_dfs[cell_index]
-
+            # Accounting
             if 'sub_coord' in cell_df.columns:
                 cell_index_colname = 'sub_coord'
             elif 'cell_index' in cell_df.columns:
@@ -139,16 +139,36 @@ class Cell_Data(object):
                 print("Couldn't find cell_index or sub_coord column in master_index_df")
 
             path = str(cell_df['path'][cell_df.index.min()] + "\\")
+            if 'path' in cell_df.columns:
+                path = os.path.abspath(cell_df.path.iloc[0])
+            elif 'compartment_reldir' in cell_df.columns:
+                path = os.path.join(constants.byc_data_dir,
+                                    cell_df.compartment_reldir.iloc[0])
+            else:
+                print(f"""
+                    No comparment directory data in cell {cell_index}'s master index
+
+                    Either add a 'path' column containing the full path to the 
+                    master index or make sure you are creating all ROIs for each
+                    cell using the imagejpc plugin, 'save_cell_roi_set.py' which
+                    constructs master index with proper formatting
+                    """)            
             expt_date = cell_df['date'][cell_df.index.min()]
             expt_type = cell_df['expt_type'][cell_df.index.min()]
             xy = cell_df['xy'][cell_df.index.min()]
             cell_index = cell_df[cell_index_colname][cell_df.index.min()]
-
+            
             stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy).zfill(2), str(cell_index).zfill(3)))
 
             # read the .csv containing measurements
-            cell_trace_dsred_path = str(path + stack_title + "_dsred_stack.csv")
-            cell_trace_yfp_path = str(path + stack_title + "_yfp_stack.csv")
+            cell_trace_dsred_path = os.path.join(path, str(stack_title + "_dsred_stack.csv"))
+            cell_trace_yfp_path = os.path.join(path, str(stack_title + "_yfp_stack.csv"))
+            if ~(os.path.exists(cell_trace_dsred_path) and os.path.exists(cell_trace_dsred_path)):
+                print("Old cell index formatting. Looking for single digit cell index and coordinate")
+                stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy), str(cell_index)))
+                # read the .csv containing measurements
+                cell_trace_dsred_path = os.path.join(path, str(stack_title + "_dsred_stack.csv"))
+                cell_trace_yfp_path = os.path.join(path, str(stack_title + "_yfp_stack.csv"))
             
             # create each dataframe for dsred and yfp
             cell_trace_dsred = pd.read_csv(cell_trace_dsred_path)
@@ -325,7 +345,7 @@ def set_processed_traces(window_width, collection_interval, manual_select=True):
     raw_yfp_trace_dfs = cd.raw_yfp_trace_dfs
     
     processed_traces = set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs)
-    trace_filenames = []
+    trace_filepaths = []
     # add late daughter morphology and cell index data to processed traces
     for cell_index in range(0, len(cells_dfs)):
         cell_master_df = cells_dfs[cell_index]
@@ -336,15 +356,35 @@ def set_processed_traces(window_width, collection_interval, manual_select=True):
         
         # Find data to create a filename for this cell's trace
         # and save it as a csv
-        datadir = cd.master_cells_df.loc[cell_index, 'path']
+        # If the master index is old school, the compartment_dir
+        # column will be called 'path'. 
+        if 'path' in cd.master_cells_df.columns:
+            datadir = os.path.abspath(cd.master_cells_df.loc[cell_index, 'path'])
+        elif 'compartment_reldir' in cd.master_cell_df.columns:
+            datadir = os.path.join(constants.byc_data_dir,
+                                   cd.master_cells_df.loc[cell_index, 'compartment_reldir'])
+        else:
+            print(f"""
+                No comparment directory data in cell {cell_index}'s' master index
+
+                Either add a 'path' column containing the full path to the 
+                master index or make sure you are creating all ROIs for each
+                cell using the imagejpc plugin, 'save_cell_roi_set.py' which
+                constructs master index with proper formatting
+                """)
+
         date = cd.master_cells_df.loc[cell_index, 'date']
         expt_type= cd.master_cells_df.loc[cell_index, 'expt_type']
-        condition_name = datadir[datadir.rindex('\\')+2:]
-        filename = f'{datadir}\\{date}_{expt_type}_{condition_name}_cell{str(cell_index).zfill(3)}.csv'
+        try:
+            compartment_name = datadir[datadir.rindex('\\')+1:]
+        except:
+            compartment_name = datadir[datadir.rindex('/')+1:]
+        filename = f'{datadir}\\{date}_{expt_type}_{compartment_name}_cell{str(cell_index).zfill(3)}.csv'
+        filepath = os.path.join(datadir, filename)
         cell_trace_df.to_csv(filename, index=False)
-        trace_filenames.append(filename)
+        trace_filepaths.append(filename)
     
-    return processed_traces, trace_filenames
+    return processed_traces, trace_filepaths
 
 def set_file_paths(prompt):
     # create the dialog box and set the fn
