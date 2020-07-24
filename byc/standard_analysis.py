@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 import tkinter.filedialog as tkdia
 
-from byc import constants
+from byc import constants, utilities
 
-class Cell_Data(object):    
+class CellData(object):    
     """
     Upon instantiation, ask the user to choose a master index for the experiment
     they want to create trace dataframes for.  
@@ -24,14 +24,34 @@ class Cell_Data(object):
             self.master_cells_df = self.set_master_cells_df("Choose the .csv for the master index of this experiment")
         else:
             self.master_cells_df = pd.read_csv(self._example_master_cells_df_path)
+        # Get fluorescent channels collected
+        if 'channels_collected' in self.master_cells_df.columns:
+            self.channel_names = self.master_cells_df.channels_collected.iloc[0].split()
+            self.fluor_channel_names = [channel for channel in self.channel_names if channel != 'bf']
+        else:
+            # default to dsred and yfp if channels not
+            # recorded in master index
+            self.fluor_channel_names = ['yfp', 'dsred']
+            print(f'WARNING: defaulting to fluor channels: {self.fluor_channel_names}')
+            print("Make sure to set 'channels_collected' column in master index")
+        # Get image collection interval in minutes. Default to 10
+        if 'collection_interval' in self.master_cells_df.columns:
+            self.collection_interval = self.master_cells_df.collection_interval.iloc[0]
+        else:
+            print(f'WARNING: defaulting to 10 minute collection interval')
+            print('Can be changed by adding collection_interval column in master_index')
+            self.collection_interval = 10
+        # Split up the master index df into a list of dfs, each
+        # one being the cell's slice from the master index
         self.cells_dfs = self.set_cells_dfs(self.master_cells_df)
         # set lists containing senescent slice for each cell
         self.senescent_slices = self.set_senenescent_slices(self.cells_dfs)
-        
         # set lists containing dataframes with measurements for each cell in cells_dfs
-        self.raw_dsred_trace_dfs, self.raw_yfp_trace_dfs = self.set_raw_cell_trace_dfs(self.cells_dfs, self.senescent_slices)
+        self.cell_trace_dfs_dict = self.get_raw_cell_trace_dfs_dict(self.cells_dfs, self.senescent_slices)
+        self.cell_trace_dfs_dict = self.name_fluor_columns(self.cell_trace_dfs_dict)
+        self.cell_trace_dfs = self.get_processed_cell_trace_dfs()
+        self.cell_trace_paths = self.get_cell_trace_paths()
 
-    
     def set_fp(self, prompt):
         """
         Return the path to a file of interest. Call with the prompt you would like to 
@@ -53,6 +73,16 @@ class Cell_Data(object):
         master_cells_fp = self.set_fp(prompt)
         # define the filename for the master expt index
         master_cells_df = pd.read_csv(master_cells_fp)
+        if 'sub_coord' in master_cells_df.columns:
+            master_cells_df.rename(columns={'sub_coord': 'cell_index'},
+                                   inplace=True)
+        if 'path' in master_cells_df.columns:
+            master_cells_df.rename(columns={'path': 'compartment_dir'},
+                                   inplace=True)
+            # add compartment_reldir here
+            abspaths = master_cells_df.compartment_dir
+            relpaths = [utilities.get_relpath(abspath) for abspath in abspaths]
+            master_cells_df.loc[:, 'compartment_reldir'] = relpaths
 
         return master_cells_df
 
@@ -118,14 +148,16 @@ class Cell_Data(object):
             
         return senescent_slices
 
-    def set_raw_cell_trace_dfs(self, cells_dfs, senescent_slices):
+    def get_raw_cell_trace_dfs_dict(self, cells_dfs, senescent_slices):
         """
-        Return two lists of dataframes (dsred, yfp) containing traces for each cell 
-        in cells_dfs. The path for each trace is constructed based on how roi_management names
-        and saves tif stacks.
+        Return a dictionary of cell channel trace dfs.
+        The keys of the dict are self.flour_channel_names (set in __init__)
+        and values are lists of individual cell trace dataframes for
+        that channel_name
         """
-        cell_traces_dsred = []
-        cell_traces_yfp = []
+        channel_names = self.fluor_channel_names
+        channel_dfs_lists = [[] for name in channel_names]
+        cell_traces_dict = dict(zip(channel_names, channel_dfs_lists))
 
         for cell_index in range(0, len(cells_dfs)):
 
@@ -138,7 +170,6 @@ class Cell_Data(object):
             else:
                 print("Couldn't find cell_index or sub_coord column in master_index_df")
 
-            path = str(cell_df['path'][cell_df.index.min()] + "\\")
             if 'path' in cell_df.columns:
                 path = os.path.abspath(cell_df.path.iloc[0])
             elif 'compartment_reldir' in cell_df.columns:
@@ -161,230 +192,168 @@ class Cell_Data(object):
             stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy).zfill(2), str(cell_index).zfill(3)))
 
             # read the .csv containing measurements
-            cell_trace_dsred_path = os.path.join(path, str(stack_title + "_dsred_stack.csv"))
-            cell_trace_yfp_path = os.path.join(path, str(stack_title + "_yfp_stack.csv"))
-            if ~(os.path.exists(cell_trace_dsred_path) and os.path.exists(cell_trace_dsred_path)):
+            cell_trace_channel_paths = [os.path.join(path, f'{stack_title}_{name}_stack.csv') for name in channel_names]
+            path_existances = [os.path.exists(path) for path in cell_trace_channel_paths]
+            if False in path_existances:
                 print("Old cell index formatting. Looking for single digit cell index and coordinate")
                 stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy), str(cell_index)))
                 # read the .csv containing measurements
-                cell_trace_dsred_path = os.path.join(path, str(stack_title + "_dsred_stack.csv"))
-                cell_trace_yfp_path = os.path.join(path, str(stack_title + "_yfp_stack.csv"))
+                cell_trace_channel_paths = [os.path.join(path, f'{stack_title}_{name}_stack.csv') for name in channel_names]
             
-            # create each dataframe for dsred and yfp
-            cell_trace_dsred = pd.read_csv(cell_trace_dsred_path)
-            cell_trace_yfp = pd.read_csv(cell_trace_yfp_path)
+            # Read in the dataframe for each channel collected and measured
+            cell_trace_channel_dfs = []
+            for path in cell_trace_channel_paths:
+                cell_trace_channel_dfs.append(pd.read_csv(path))
             # create the time to senescence column
-            if not (senescent_slices[cell_index] == "FALSE"):
-                
-                cell_trace_dsred['slices_to_senescence'] = cell_trace_dsred['Slice'] - int(senescent_slices[cell_index])
-                cell_trace_yfp['slices_to_senescence'] = cell_trace_yfp['Slice'] - int(senescent_slices[cell_index])
-                
+            if not (senescent_slices[cell_index] == "FALSE"):               
+                for channel_df in cell_trace_channel_dfs:
+                    channel_df['slices_to_senescence'] = channel_df['Slice'] - int(senescent_slices[cell_index]) 
+                    channel_df['cell_index'] = cell_index
             else:
                 print("Senescence not observed for cell %s" % cell_index)
-                
-            cell_traces_dsred.append(cell_trace_dsred)
-            cell_traces_yfp.append(cell_trace_yfp)
-
-        return cell_traces_dsred, cell_traces_yfp
-    
-
-# define a list that will be filled with indices of cells that are in the same slice
-def sliding_median_window(dataframe, window_width):    
-    """
-    Return the input DataFrame with a column ("sliding_median") added containing a 
-    sliding mean sampling window with width specified.
-    """    
-    dataframe.loc[:, 'sliding_median'] = np.zeros(len(dataframe['Slice']))
-    
-    for i in dataframe.index:
-        if i == 0:
-            dataframe.loc[i, 'sliding_median'] = dataframe.loc[i: window_width + 1, 'Mean'].median()
-        
-        elif 0 < i < window_width:
-            dataframe.loc[i, 'sliding_median'] = dataframe.loc[0: i + window_width + 1, 'Mean'].median()
-                    
-        elif i >= window_width:
-            dataframe.loc[i, 'sliding_median'] = dataframe.loc[i - window_width: i + window_width + 1,'Mean'].median()
             
+            cell_trace_dict = dict(zip(channel_names, cell_trace_channel_dfs))
+            # Add cell traces to dictionary that gets returned at
+            # end of function
+            for channel_name, channel_df in cell_trace_dict.items():
+                cell_traces_dict[channel_name].append(channel_df)
+
+        return cell_traces_dict
+
+    def correct_time(self, dataframe):        
+        """
+        Return a DataFrame of the DataFrame passed to correct_time() with
+        columns added for minutes and hours according to the collection_interval argument
+        """
+        collection_interval = self.collection_interval
+        if "slices_to_senescence" in dataframe.columns:        
+            dataframe.loc[:, 'minutes_to_senescence'] = dataframe['slices_to_senescence'] * collection_interval
+            dataframe.loc[:, 'hours_to_senescence'] = dataframe['minutes_to_senescence'] / 60
         else:
-            print("Somehow reached an index value out of range. This is the current index:", i)
-            
-    return dataframe
-
-# define a list that will be filled with indices of cells that are in the same slice
-def sliding_mean_window(dataframe, window_width):
-    """
-    Return the input DataFrame with a column ("sliding_mean") added containing a 
-    sliding mean sampling window with width specified.
-    """    
-    dataframe.loc[:, 'sliding_mean'] = np.zeros(len(dataframe['Slice']))
-    
-    for i in dataframe.index:
-        if i == 0:
-            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[i: window_width + 1, 'Mean'].mean()
+            pass
+        # Slice really refers to frame in time. It's the name
+        # given by by imagej when making fluorescence measurements
+        dataframe.loc[:, 'minutes'] = (dataframe['Slice']-1) * collection_interval
+        dataframe.loc[:, 'hours'] = dataframe['minutes'] / 60
         
-        elif 0 < i < window_width:
-            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[0: i + window_width + 1, 'Mean'].mean()
-                    
-        elif i >= window_width:
-            dataframe.loc[i, 'sliding_mean'] = dataframe.loc[i - window_width: i + window_width + 1, 'Mean'].mean()
-            
-        else:
-            print("Somehow reached an index value out of range. This is the current index:", i)
-            
-    return dataframe
+        return dataframe
 
-# define a list that will be filled with indices of cells that are in the same slice
-def diameter_sliding_window(dataframe, window_width):
-    """ 
-    Return the input DataFrame with a column ("cell_diamter_sliding") added containing a 
-    sliding mean sampling window with width specified.
-    """    
-    dataframe.loc[:, 'cell_diameter_sliding'] = np.zeros(len(dataframe['Slice']))
+    def cell_diameter(self, dataframe):
+        """
+        Return a DataFrame with added column for cell diameter in um
+        """        
+        dataframe.loc[:, 'cell_diameter(um)'] = 0.44*(np.sqrt(dataframe['Area'] / np.pi))
+        return dataframe
+
+    def name_fluor_columns(self, cell_trace_dfs_dict):
+
+        for channel in cell_trace_dfs_dict.keys():
+            print(channel)
+            for df in cell_trace_dfs_dict[channel]:
+                assert channel in df.Label.iloc[0], "Measurement .csv matched to wrong channel"
+                df.rename(columns={'Mean': f'{channel}_mean',
+                                   'Median': f'{channel}_median',
+                                   'RawIntDen': f'{channel}_int'},
+                          inplace=True)
+                # Add corrected time and a cell diameter
+                # column to the trace dataframe. Might re
+                # add mean filters etc. trace tools at some
+                # point. But for now keeping it simple
+                df = self.correct_time(df)
+                df = self.cell_diameter(df)
+
+        return cell_trace_dfs_dict
+
+    def get_processed_cell_trace_df(self, cell_index, master_cells_df):
     
-    for i in dataframe.index:
-        if i == 0:
-            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][i: window_width + 1].mean()
+        dfs_dict = self.cell_trace_dfs_dict
+        cell_channel_dfs = [dfs_dict[channel][int(cell_index)] for channel in self.fluor_channel_names]
         
-        elif 0 < i < window_width:
-            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][0: i + window_width + 1].mean()
-                    
-        elif i >= window_width:
-            dataframe.loc[i, 'cell_diameter_sliding'] = dataframe['cell_diameter(um)'][i - window_width: i + window_width + 1].mean()
-            
-        else:
-            print("Somehow reached an index value out of range. This is the current index:", i)
-            
-    return dataframe
+        if len(cell_channel_dfs) == 0:
+            print("No channel_dfs found")
+            return None
+        # If there's only one fluorescent channel collected
+        elif len(cell_channel_dfs) == 1:
+            final_cell_df = cell_channel_dfs[0]
+        # If there are more than one fluoroscent channels
+        # collected, as is normal.
+        elif len(cell_channel_dfs) > 1:
+            # Expanded dataframe merge
+            base_df = cell_channel_dfs[0]
+            for channel_df in cell_channel_dfs:
+                cols_to_add = [col for col in channel_df.columns if col not in base_df.columns]
+                for col in cols_to_add:
+                    base_df.loc[:, col] = channel_df.loc[:, col]
+            final_cell_df = base_df
 
-def correct_time(dataframe, collection_interval):        
-    """
-    Return a DataFrame of the DataFrame passed to correct_time() with
-    columns added for minutes and hours according to the collection_interval argument
-    """    
-    if "slices_to_senescence" in dataframe.columns:        
-        dataframe.loc[:, 'minutes_to_senescence'] = dataframe['slices_to_senescence'] * collection_interval
-        dataframe.loc[:, 'hours_to_senescence'] = dataframe['minutes_to_senescence'] / 60
-        
-    else:
-        print("Senescence not observed for this cell")
-    
-    dataframe.loc[:, 'minutes'] = (dataframe['Slice']-1) * collection_interval
-    dataframe.loc[:, 'hours'] = dataframe['minutes'] / 60    
-    
-    return dataframe
+        if final_cell_df.empty == True:
+            m1 = f'cell_index: {cell_index}'
+            m2 = f'compartment_dir: {master_cells_df.compartment_dir[cell_index]}'
+            print(f'Warning, returning empty cell_trace_df\n{m1}\n{m2}')
 
-def cell_diameter(dataframe):
-    """
-    Return a DataFrame with added column for cell diameter in um
-    """
-    
-    dataframe.loc[:, 'cell_diameter(um)'] = 0.44*(np.sqrt(dataframe['Area'] / np.pi))
-    return dataframe
+        return final_cell_df
 
-def complete_dataframe(dsred_df, yfp_df, cell_number, window_width, collection_interval):
-    dsred_df = dsred_df.copy()
-    yfp_df = yfp_df.copy()
+    def get_processed_cell_trace_dfs(self):
+        """
+        Return a list of cell trace dataframes.
+        All channels combined with added correct 
+        time etc.
+        """
+        cell_trace_dfs = []
+        for cell_index in self.master_cells_df.cell_index.unique():
+            cell_trace_df = self.get_processed_cell_trace_df(cell_index, self.master_cells_df)
+            cell_trace_dfs.append(cell_trace_df)
     
-    # Add time in minutes and hours
-    final = correct_time(dsred_df, collection_interval)
-    # Add sliding mean window column
-    dsred_df = sliding_mean_window(dsred_df, window_width)
-    yfp_df = sliding_mean_window(yfp_df, window_width)
-    # add sliding median window column
-    dsred_df = sliding_median_window(dsred_df, window_width)
-    yfp_df = sliding_median_window(yfp_df, window_width)
-    # Add cell diameter in um column
-    dsred_df = cell_diameter(dsred_df)
-    yfp_df = cell_diameter(yfp_df)
-    # Add a cell diameter sliding column
-    dsred_df = diameter_sliding_window(dsred_df, window_width)
-    yfp_df = diameter_sliding_window(yfp_df, window_width)
-    
-    # Put dsred and yfp dataframes together
-    final.loc[:, 'dsred_mean'] = dsred_df['Mean']
-    final.loc[:, 'yfp_mean'] = yfp_df['Mean']
-    
-    final.loc[:, 'dsred_sliding_mean'] = dsred_df['sliding_mean']
-    final.loc[:, 'yfp_sliding_mean'] = yfp_df['sliding_mean']
-    
-    final.loc[:, 'dsred_sliding_median'] = dsred_df['sliding_median']
-    final.loc[:, 'yfp_sliding_median'] = yfp_df['sliding_median']
-    
-    final.loc[:, 'yfp/dsred'] = yfp_df['Mean'] / dsred_df['Mean']
-    final.loc[:, 'yfp/dsred_sliding'] = yfp_df['sliding_mean'] / dsred_df['sliding_mean']
-    
-    return final
+        return cell_trace_dfs
 
-def set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs):
-    """ 
-    Return a list of processed dataframes for each cell trace. The processed
-    dataframes have added columns like adjusted time, ratios, etc.\
-    """
+    def get_cell_trace_paths(self):
+        """
+        Create a .csv filepath for each cell trace
+        df in self.cell_trace_dfs, save the cell
+        trace df at that path, and return the list
+        of paths
+        """
+        master_index = self.master_cells_df
+        cells_dfs = self.cells_dfs
+        cell_trace_dfs_dict = self.cell_trace_dfs_dict
     
-    processed_trace_dfs = []
-    
-    for cell_index in range(0, len(cells_dfs)):
-        print("Processing trace dataframe for cell %s of %s" % (cell_index, len(cells_dfs) - 1))
-        processed_trace_df = complete_dataframe(raw_dsred_trace_dfs[cell_index],
-                                                raw_yfp_trace_dfs[cell_index],
-                                                cell_index,
-                                                window_width,
-                                                collection_interval)
+        processed_traces = self.cell_trace_dfs
+        trace_filepaths = []
 
-        processed_trace_dfs.append(processed_trace_df)
-        
-    return processed_trace_dfs
-
-def set_processed_traces(window_width, collection_interval, manual_select=True):
-    
-    cd = Cell_Data(manual_select)
-    master_index = cd.master_cells_df
-    cells_dfs = cd.cells_dfs
-    raw_dsred_trace_dfs = cd.raw_dsred_trace_dfs
-    raw_yfp_trace_dfs = cd.raw_yfp_trace_dfs
-    
-    processed_traces = set_processed_trace_dfs(cells_dfs, window_width, collection_interval, raw_dsred_trace_dfs, raw_yfp_trace_dfs)
-    trace_filepaths = []
-    # add late daughter morphology and cell index data to processed traces
-    for cell_index in range(0, len(cells_dfs)):
-        cell_master_df = cells_dfs[cell_index]
-        cell_trace_df = processed_traces[cell_index]
-
-        cell_trace_df['late_daughter_shape'] = cell_master_df['late_daughter_shape'][cell_master_df.index[0]]
-        cell_trace_df['cell_index'] = cell_index
-        
+        for cell_index in range(0, len(cells_dfs)):
+            cell_master_df = cells_dfs[cell_index]
+            cell_trace_df = processed_traces[cell_index]        
         # Find data to create a filename for this cell's trace
         # and save it as a csv
         # If the master index is old school, the compartment_dir
         # column will be called 'path'. 
-        if 'path' in cd.master_cells_df.columns:
-            datadir = os.path.abspath(cd.master_cells_df.loc[cell_index, 'path'])
-        elif 'compartment_reldir' in cd.master_cell_df.columns:
-            datadir = os.path.join(constants.byc_data_dir,
-                                   cd.master_cells_df.loc[cell_index, 'compartment_reldir'])
-        else:
-            print(f"""
-                No comparment directory data in cell {cell_index}'s' master index
+            if 'path' in self.master_cells_df.columns:
+                datadir = os.path.abspath(master_index.loc[cell_index, 'path'])
+            elif 'compartment_reldir' in master_index.columns:
+                datadir = os.path.join(constants.byc_data_dir,
+                                       master_index.loc[cell_index, 'compartment_reldir'])
+            else:
+                print(f"""
+                    No comparment directory data in cell {cell_index}'s' master index
 
-                Either add a 'path' column containing the full path to the 
-                master index or make sure you are creating all ROIs for each
-                cell using the imagejpc plugin, 'save_cell_roi_set.py' which
-                constructs master index with proper formatting
-                """)
+                    Either add a 'path' column containing the full path to the 
+                    master index or make sure you are creating all ROIs for each
+                    cell using the imagejpc plugin, 'save_cell_roi_set.py' which
+                    constructs master index with proper formatting
+                    """)
 
-        date = cd.master_cells_df.loc[cell_index, 'date']
-        expt_type= cd.master_cells_df.loc[cell_index, 'expt_type']
-        try:
-            compartment_name = datadir[datadir.rindex('\\')+1:]
-        except:
-            compartment_name = datadir[datadir.rindex('/')+1:]
-        filename = f'{datadir}\\{date}_{expt_type}_{compartment_name}_cell{str(cell_index).zfill(3)}.csv'
-        filepath = os.path.join(datadir, filename)
-        cell_trace_df.to_csv(filename, index=False)
-        trace_filepaths.append(filename)
+            date = self.master_cells_df.loc[cell_index, 'date']
+            expt_type= self.master_cells_df.loc[cell_index, 'expt_type']
+            try:
+                compartment_name = datadir[datadir.rindex('\\')+1:]
+            except:
+                compartment_name = datadir[datadir.rindex('/')+1:]
+            filename = f'{datadir}\\{date}_{expt_type}_{compartment_name}_cell{str(cell_index).zfill(3)}.csv'
+            filepath = os.path.join(datadir, filename)
+            cell_trace_df.to_csv(filepath, index=False)
+            trace_filepaths.append(filepath)
     
-    return processed_traces, trace_filepaths
+        return trace_filepaths
 
 def set_file_paths(prompt):
     # create the dialog box and set the fn
