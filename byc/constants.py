@@ -50,6 +50,8 @@ master_index_cols = ['date',
                      'Pos',
                      'dist_from_sen']
 
+default_channels = ['yfp', 'dsred']                     
+
 class Patterns(object):
 
     def __init__(self):

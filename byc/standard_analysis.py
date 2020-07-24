@@ -9,10 +9,14 @@ import tkinter.filedialog as tkdia
 
 from byc import constants, utilities
 
-class CellData(object):    
+class bycDataSet(object):    
     """
     Upon instantiation, ask the user to choose a master index for the experiment
-    they want to create trace dataframes for.  
+    they want to create trace dataframes for each cell in the master index.
+
+    Should be run after segemnting cells, then creating measurement rois
+    using imagejpc/utilities/save_cell_roi_set, and then creating and saving 
+    those measurements using imagejpc/utilities/measure_rois
     """       
     def __init__(self, manual_select=True):
         
@@ -31,7 +35,7 @@ class CellData(object):
         else:
             # default to dsred and yfp if channels not
             # recorded in master index
-            self.fluor_channel_names = ['yfp', 'dsred']
+            self.fluor_channel_names = constants.default_channels
             print(f'WARNING: defaulting to fluor channels: {self.fluor_channel_names}')
             print("Make sure to set 'channels_collected' column in master index")
         # Get image collection interval in minutes. Default to 10
