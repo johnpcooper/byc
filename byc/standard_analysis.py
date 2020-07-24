@@ -7,8 +7,11 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 import tkinter.filedialog as tkdia
 
-from byc import constants, utilities
+from byc import constants, utilities, database
 
+# Recently updated bycDataSet so that you instantiate
+# it by giving it a key through which it can find
+# the master index in byc.database.byc_database.master_index_dfs_dict
 class bycDataSet(object):    
     """
     Upon instantiation, ask the user to choose a master index for the experiment
@@ -18,19 +21,21 @@ class bycDataSet(object):
     using imagejpc/utilities/save_cell_roi_set, and then creating and saving 
     those measurements using imagejpc/utilities/measure_rois
     """       
-    def __init__(self, manual_select=True):
-        
-        filename = "20200221_byc_master_index.csv"
-        self._example_master_cells_df_path = os.path.join(constants.package_path, filename)
+    def __init__(self, manual_select=False, **kwargs):
 
+        # example gotten from one of byc.database.byc_database.master_index_dfs_dict.keys()
+        example_compartment_name = '20200214_byc'
+        self.compartment_name = kwargs.get('compartment_name', example_compartment_name)
+        
         if manual_select:
             # set the files that will be used for every cell analyzed
-            self.master_cells_df = self.set_master_cells_df("Choose the .csv for the master index of this experiment")
-        else:
-            self.master_cells_df = pd.read_csv(self._example_master_cells_df_path)
+            self.master_index_df = self.select_master_index_df("Choose the .csv for the master index of this experiment")
+        elif self.compartment_name != None:
+            self.master_index_df = database.byc_database.master_index_dfs_dict[self.compartment_name]
+            self.master_index_df = self.clean_master_index_df(self.master_index_df)
         # Get fluorescent channels collected
-        if 'channels_collected' in self.master_cells_df.columns:
-            self.channel_names = self.master_cells_df.channels_collected.iloc[0].split()
+        if 'channels_collected' in self.master_index_df.columns:
+            self.channel_names = self.master_index_df.channels_collected.iloc[0].split()
             self.fluor_channel_names = [channel for channel in self.channel_names if channel != 'bf']
         else:
             # default to dsred and yfp if channels not
@@ -39,15 +44,15 @@ class bycDataSet(object):
             print(f'WARNING: defaulting to fluor channels: {self.fluor_channel_names}')
             print("Make sure to set 'channels_collected' column in master index")
         # Get image collection interval in minutes. Default to 10
-        if 'collection_interval' in self.master_cells_df.columns:
-            self.collection_interval = self.master_cells_df.collection_interval.iloc[0]
+        if 'collection_interval' in self.master_index_df.columns:
+            self.collection_interval = self.master_index_df.collection_interval.iloc[0]
         else:
             print(f'WARNING: defaulting to 10 minute collection interval')
             print('Can be changed by adding collection_interval column in master_index')
             self.collection_interval = 10
         # Split up the master index df into a list of dfs, each
         # one being the cell's slice from the master index
-        self.cells_dfs = self.set_cells_dfs(self.master_cells_df)
+        self.cells_dfs = self.set_cells_dfs(self.master_index_df)
         # set lists containing senescent slice for each cell
         self.senescent_slices = self.set_senenescent_slices(self.cells_dfs)
         # set lists containing dataframes with measurements for each cell in cells_dfs
@@ -69,50 +74,57 @@ class bycDataSet(object):
 
         return fp # return the path to the file you just selected
 
-    def set_master_cells_df(self, prompt):
+    def clean_master_index_df(self, master_index_df):
+
+        if 'sub_coord' in master_index_df.columns:
+            master_index_df.rename(columns={'sub_coord': 'cell_index'},
+                                   inplace=True)
+        if 'path' in master_index_df.columns:
+            master_index_df.rename(columns={'path': 'compartment_dir'},
+                                   inplace=True)
+            # add compartment_reldir here
+            abspaths = master_index_df.compartment_dir
+            relpaths = [utilities.get_relpath(abspath) for abspath in abspaths]
+            master_index_df.loc[:, 'compartment_reldir'] = relpaths
+
+        return master_index_df
+
+    def select_master_index_df(self, prompt):
         """
         Return a dataframe read from the master cells index .csv
         """
         # define the path to the index .csv
         master_cells_fp = self.set_fp(prompt)
         # define the filename for the master expt index
-        master_cells_df = pd.read_csv(master_cells_fp)
-        if 'sub_coord' in master_cells_df.columns:
-            master_cells_df.rename(columns={'sub_coord': 'cell_index'},
-                                   inplace=True)
-        if 'path' in master_cells_df.columns:
-            master_cells_df.rename(columns={'path': 'compartment_dir'},
-                                   inplace=True)
-            # add compartment_reldir here
-            abspaths = master_cells_df.compartment_dir
-            relpaths = [utilities.get_relpath(abspath) for abspath in abspaths]
-            master_cells_df.loc[:, 'compartment_reldir'] = relpaths
+        master_index_df = pd.read_csv(master_cells_fp)
+        master_index_df = self.clean_master_index_df(master_index_df)
 
-        return master_cells_df
+        return master_index_df
 
-    def set_cells_dfs(self, master_cells_df):
+
+    def set_cells_dfs(self, master_index_df):
         """
-        Return a list of sub-dataframes of the master_cells_df. The sub-dataframes
+        Return a list of sub-dataframes of the master_index_df. The sub-dataframes
         contain data for only one cell according to its cell_index
         """
         # create the cells_dfs list
         cells_dfs = []
 
         # add to the cells_dfs a dataframe at index i for every
-        # unique value in the master_cells_df['cell_index'] or 
+        # unique value in the master_index_df['cell_index'] or 
         # 'sub_coord' if that's in the master index
-        if 'sub_coord' in master_cells_df.columns:
+        if 'sub_coord' in master_index_df.columns:
             cell_index_colname = 'sub_coord'
-        elif 'cell_index' in master_cells_df.columns:
+        elif 'cell_index' in master_index_df.columns:
             cell_index_colname = 'cell_index'
         else:
             print("Couldn't find cell_index or sub_coord column in master_index_df")
-        for i in master_cells_df[cell_index_colname].unique():
-            # set the logic mask to a sub-dataframe of master_cells_df containing
+        for i in master_index_df[cell_index_colname].unique():
+            # set the logic mask to a sub-dataframe of master_index_df containing
             # only values whose 'sub_coord' value is value
             print(f"Slicing master index df for cell {i}")
-            logic_mask = (master_cells_df[cell_index_colname] == i)
-            cells_dfs.append(master_cells_df[logic_mask])
+            logic_mask = (master_index_df[cell_index_colname] == i)
+            cells_dfs.append(master_index_df[logic_mask])
             print("cells_dfs is now %d elements long" % len(cells_dfs))
 
         return cells_dfs
@@ -268,7 +280,7 @@ class bycDataSet(object):
 
         return cell_trace_dfs_dict
 
-    def get_processed_cell_trace_df(self, cell_index, master_cells_df):
+    def get_processed_cell_trace_df(self, cell_index, master_index_df):
     
         dfs_dict = self.cell_trace_dfs_dict
         cell_channel_dfs = [dfs_dict[channel][int(cell_index)] for channel in self.fluor_channel_names]
@@ -292,7 +304,7 @@ class bycDataSet(object):
 
         if final_cell_df.empty == True:
             m1 = f'cell_index: {cell_index}'
-            m2 = f'compartment_dir: {master_cells_df.compartment_dir[cell_index]}'
+            m2 = f'compartment_dir: {master_index_df.compartment_dir[cell_index]}'
             print(f'Warning, returning empty cell_trace_df\n{m1}\n{m2}')
 
         return final_cell_df
@@ -304,8 +316,11 @@ class bycDataSet(object):
         time etc.
         """
         cell_trace_dfs = []
-        for cell_index in self.master_cells_df.cell_index.unique():
-            cell_trace_df = self.get_processed_cell_trace_df(cell_index, self.master_cells_df)
+        if 'sub_coord' in self.master_index_df.columns:
+            self.master_index_df.rename(columns={'sub_coord': 'cell_index'}, inplace=True)
+
+        for cell_index in self.master_index_df.cell_index.unique():
+            cell_trace_df = self.get_processed_cell_trace_df(cell_index, self.master_index_df)
             cell_trace_dfs.append(cell_trace_df)
     
         return cell_trace_dfs
@@ -317,7 +332,7 @@ class bycDataSet(object):
         trace df at that path, and return the list
         of paths
         """
-        master_index = self.master_cells_df
+        master_index = self.master_index_df
         cells_dfs = self.cells_dfs
         cell_trace_dfs_dict = self.cell_trace_dfs_dict
     
@@ -331,7 +346,7 @@ class bycDataSet(object):
         # and save it as a csv
         # If the master index is old school, the compartment_dir
         # column will be called 'path'. 
-            if 'path' in self.master_cells_df.columns:
+            if 'path' in self.master_index_df.columns:
                 datadir = os.path.abspath(master_index.loc[cell_index, 'path'])
             elif 'compartment_reldir' in master_index.columns:
                 datadir = os.path.join(constants.byc_data_dir,
@@ -346,8 +361,8 @@ class bycDataSet(object):
                     constructs master index with proper formatting
                     """)
 
-            date = self.master_cells_df.loc[cell_index, 'date']
-            expt_type= self.master_cells_df.loc[cell_index, 'expt_type']
+            date = self.master_index_df.loc[cell_index, 'date']
+            expt_type= self.master_index_df.loc[cell_index, 'expt_type']
             try:
                 compartment_name = datadir[datadir.rindex('\\')+1:]
             except:
