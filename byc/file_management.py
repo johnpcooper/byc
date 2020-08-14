@@ -53,7 +53,126 @@ def read_roi_position_indices(path):
         
     return np.array(bud_positions)
 
-def rename_steady_state(max_n_fovs):
+def find_condition(descriptor_list, conditions):
+    """
+    Search conditions (a list of directory names) for 
+    one that contains all the strings in descriptor list
+    (gotten from values in some master_index) and return
+    the condition (directory name) that matches every
+    descriptor in descriptor list
+    
+    If 0 or > 1 matches found, return None
+    """
+    matched_conditions = []
+    # Should be regex but this works
+    for condition in conditions:
+        match_results = [str(descriptor) in condition for descriptor in descriptor_list]
+        if False not in match_results:
+            matched_conditions.append(condition)
+
+    if len(matched_conditions) == 1:
+        return matched_conditions[0]
+    else:
+        print(f'Failed to find a single directory that matched descriptor list: \n{descriptor_list}')
+        print(f'Found {len(matched_conditions)} matched directories:\n{matched_conditions}')
+        return None
+    
+def find_fov_paths(conditionpath):
+    """
+    Return the list of fov directory names found
+    in the directory at conditionpath
+    """
+    assert os.path.isdir(conditionpath), f'{conditionpath} is not a directory'    
+    
+    items = os.listdir(conditionpath)
+    matches = [name for name in items if 'Pos' in name]
+    
+    fov_paths = [os.path.join(conditionpath, name) for name in matches]
+    
+    if len(fov_paths) > 0:
+        errmsg = f'Found a non-directory fov path in fov_paths:\n{fov_paths}'
+        assert False not in [os.path.isdir(path) for path in fov_paths], errmsg
+        return fov_paths
+    else:
+        print(f'Found no fov paths at conditionpath:\n{conditionpath}')
+        return None
+    
+def rename_channels(fov_path, channels_dict, base_filename, exptdir):
+    """
+    Move and rename each channel .tif file according
+    to arguments passed.
+    
+    Return nothing
+    """
+    channels = [path for path in os.listdir(fov_path) if '.tif' in path]
+    fov = fov_path[fov_path.rindex('Pos') + len('Pos'):]
+    found_channels = []
+    for fov_channel_filename in channels:
+        
+        for key in channel_dict.keys():
+
+            if channel_dict[key] in fov_channel_filename:
+
+                src = os.path.join(fov_path, fov_channel_filename)
+                dst = os.path.join(exptdir, f'{base_filename}_{fov.zfill(3)}_{key}.tif')
+                shutil.copyfile(src, dst)
+
+                found_channels.append(key)
+    
+    # Check if we found a file for every channel dictated in the master_index
+    if len(found_channels) == len(channel_dict):
+        pass
+    else:
+        print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
+
+def rename_steady_state():
+    """
+    Ask the user to choose a master_index for their steady
+    state experiment. Then rename files tifs based
+    on that master index
+    """
+
+    master_index_df = pd.read_csv(file_management.select_file("Choose master index .csv"))
+    exptdir = master_index_df.path.iloc[0]
+    conditions = os.listdir(exptdir)
+
+    for condition_index in master_index_df.index:
+
+        row = master_index_df.loc[condition_index, :]
+        # Should make it easier to change which columns
+        # are used to match conditions to directories,
+        # but for now this list works
+        descriptor_list = [row.expt_date,
+                           row.plasmid,
+                           row.genotype,
+                           f'clone{row.clone}']
+
+        # Check if there's a directory that matches the 
+        # descriptors provided for this condition in 
+        # the master index
+        condition = find_condition(descriptor_list, conditions)
+        if condition:
+            base_filename = f'{row.expt_date}_{row.plasmid}_{row.genotype}_C{row.clone}'
+            base_path = f'{exptdir}\\{base_filename}'
+            channel_dict = dict(zip(row.channel_names.split(), row.raw_channel_names.split()))
+            conditionpath = os.path.join(exptdir, condition)
+            print(f'Processing files found in condition dir:\n{conditionpath}')
+        else:
+            print(f'No directories found matching condition {condition_index} in master index')
+
+        # Look for FOV directories in the conditionpath
+        fov_paths = find_fov_paths(conditionpath)
+        if fov_paths != None:
+            for fov_path in fov_paths:
+                rename_channels(fov_path, channel_dict, base_filename, exptdir)
+        else:
+            print(f"No FOV directories found at conditionpath {conditionpath}")
+            
+def rename_steady_state_legacy(max_n_fovs):
+    """
+    This verision of rename_steady_state() works with data
+    collected on or before 20200312
+    """
 
     master_index_df = pd.read_csv(select_file("Choose master index for this experiment"))
     fovs_list = range(1, max_n_fovs+1)
