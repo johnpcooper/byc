@@ -140,4 +140,29 @@ def set_proportional_weights_by_plasmid(df):
         
     return df
 
+def set_proportional_weights_by_plasmid(df):
+    
+    """ Return the dataframe passed to this function with a new column called 'weight'. 
+        The weight for a row (cell) is 1 - the number of cells with that cell's unique
+        plasmid / total number of cells in the data set. 
+        
+        This allows evenly selecting from each plasmid (or potentially other) group 
+        when using df.sample(n=some_number, weights=df.weight). 
+        
+        WARNING: currently this function applies weight by df.index.levels[0]"""
+    
+    df.loc[:, 'weight'] = 0
+    df = df.set_index(['plasmid', 'cell_index'])
 
+    for plasmid_level in df.index.levels[0]:
+        print(plasmid_level)
+
+        n_cells = len(df.loc[plasmid_level, :])
+        print(f"Number of cells in {plasmid_level} group = {n_cells}")
+        proportion = n_cells / len(df)
+        print(f"Fraction of all cell in {plasmid_level} = {proportion}")
+        weight = 1 / proportion
+        print(f"weight={weight}")
+        df.loc[plasmid_level, 'weight'] = weight
+        
+    return df
