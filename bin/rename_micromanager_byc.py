@@ -3,7 +3,7 @@ import sys
 
 def run():
 
-    if sys.argv > 1:
+    if len(sys.argv) > 1:
         print(sys.argv)
         assert len(sys.argv) == 2, "Enter one directory as arg variable"
         expt_dir = sys.argv[1]

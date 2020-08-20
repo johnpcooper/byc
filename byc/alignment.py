@@ -3,6 +3,7 @@ from skimage.morphology import disk, remove_small_objects
 from skimage import transform
 from skimage.morphology import skeletonize
 from skimage.feature import register_translation
+from skimage.registration import phase_cross_correlation
 from skimage.transform import AffineTransform
 import skimage.io as io
 from skimage.util import img_as_uint
@@ -122,8 +123,8 @@ def _determine_registration_offset(base_image, uncorrected_image):
     right_uncorrected = uncorrected_image[:, int(uncorrected_width * 0.7): int(uncorrected_width * 0.9)]
 
     # 
-    left_dy, left_dx = register_translation(left_base_section, left_uncorrected, upsample_factor=20)[0]
-    right_dy, right_dx = register_translation(right_base_section, right_uncorrected, upsample_factor=20)[0]
+    left_dy, left_dx = phase_cross_correlation(left_base_section, left_uncorrected, upsample_factor=20)[0]
+    right_dy, right_dx = phase_cross_correlation(right_base_section, right_uncorrected, upsample_factor=20)[0]
 
     return (left_dy + right_dy) / 2.0, (left_dx + right_dx) / 2.0
 
@@ -158,7 +159,7 @@ def get_channel_names(fov_path):
 
 def align_images(fov_path, channel_names):
 
-    fov_slice_filenames = os.listdir(fov_path)
+    fov_slice_filenames = [file for file in os.listdir(fov_path) if file.endswith('.tif')]
 
     images = []
     for filename in fov_slice_filenames:
@@ -225,9 +226,13 @@ def align_images(fov_path, channel_names):
         try:
             # align based on feautres of image 0, I think I should change this to align
             # to image i-1
-            translational_offsets.append(_determine_registration_offset(rotated_images[0][0], image))
+            translational_offset = _determine_registration_offset(rotated_images[0][1], image)
+            print(f'Translational offset: {translational_offset}')
+            translational_offsets.append(translational_offset)
         except:
-            translational_offsets.append(_determine_registration_offset(rotated_images[0], rotated_images[i]))
+            translational_offset = _determine_registration_offset(rotated_images[0], rotated_images[i])
+            print(f'Translational offset: {translational_offset}')
+            translational_offsets.append(translational_offset)
         
     # now translate the images
     translated_images = []
