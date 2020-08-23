@@ -10,7 +10,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
 # Stuff from byc
-import byc.file_management as fm
+import byc.files as fm
 
 plt_params_dict = {'font.sans-serif': 'Arial'}
 
@@ -401,3 +401,6 @@ def plot_auto_manual_corr(neighbor_df, cell_index, expt_name):
 
     fig.savefig(f'{filename}.{filetype}')
  
+
+
+

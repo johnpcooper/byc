@@ -5,10 +5,10 @@ import os
 def run(nis_data=False):
 
     if nis_data == False:
-        from byc import alignment
-        alignment.align_byc_expt()
+        from byc import process
+        process.align_byc_expt()
     else:
-        from byc.nis import alignment as a
+        from byc.nis import process as a
         import tifffile as tf
         import tkinter as tk
         import tkinter.filedialog as dia        
@@ -73,3 +73,5 @@ if __name__ == "__main__":
     else:
         run()
         
+
+

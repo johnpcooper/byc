@@ -8,9 +8,9 @@ import skimage.util
 import skimage.morphology
 import numpy as np
 
-from byc import rotation, utilities, constants, file_management, registration
+from byc import rotation, utilities, constants, files, registration
 
-class bycTifs(object):
+class bycImageSet(object):
     """
     On instantation, prompt the user to select the input
     directory holding their raw tifs. Then create some
@@ -20,11 +20,11 @@ class bycTifs(object):
         
         self.input_dir_path = kwargs.get('input_dir_path', None)
         if self.input_dir_path == None:
-            self.input_dir_path = file_management.select_directory('Choose the directory holding the expt you want to align')
+            self.input_dir_path = files.select_directory('Choose the directory holding the expt you want to align')
         
         self.output_dir_path = self.output_dir_path(self.input_dir_path)
         self.fov_dir_paths_dict = self.fov_dir_paths_dict(self.input_dir_path)
-        self.display_and_comments = file_management.get_byc_display_and_comments_dict(self.input_dir_path)
+        self.display_and_comments = files.get_byc_display_and_comments_dict(self.input_dir_path)
         self.channel_names = [channel['Name'] for channel in self.display_and_comments['Channels']]
         
     def output_dir_path(self, input_dir_path):
@@ -157,17 +157,17 @@ def translate_channels(channels_dict, offsets):
 
     return translated_channels
 
-def align_fov(fov_index, byctifs, write_output=True):
+def align_fov(fov_index, byc_image_set, write_output=True):
     """
-    Pass this function an alignment.bycTifs() instance which
+    Pass this function an process.bycImageSet() instance which
     it will use to get data for the fov at fov_index, align
     each channel collected based on rotational and translational
-    alignment of the 'Brightfield' channel, then if write_output
-    save the translated channel_stacks in byctifs_output_dir_path.
+    process of the 'Brightfield' channel, then if write_output
+    save the translated channel_stacks in byc_image_set_output_dir_path.
 
     If write_output==False, return the translated channels_dict
     """
-    channels = byctifs.fov_channels_dict(fov_index, byctifs.fov_dir_paths_dict)
+    channels = byc_image_set.fov_channels_dict(fov_index, byc_image_set.fov_dir_paths_dict)
     # Find a good rotational offset and rotate images in each channel
     # stack by that rotational offset
     median_offset = get_median_rotational_offset(channels['Brightfield'])
@@ -181,13 +181,14 @@ def align_fov(fov_index, byctifs, write_output=True):
     offsets = registration.determine_offsets(base_image, rotated_channels['Brightfield'])
     translated_channels = translate_channels(rotated_channels, offsets)
     # Save each translated channel stack
-    fov_dir_path = byctifs.fov_dir_paths_dict[fov_index]
+    fov_dir_path = byc_image_set.fov_dir_paths_dict[fov_index]
+    # Should update this to find date using byc.constants.patterns.date
     expt_date = fov_dir_path.split('/')[-1][0:8]
     if write_output:
 
         fov_str = str(fov_index).zfill(2)
         basefilename = f'{expt_date}_byc_xy{fov_str}'
-        base_writepath = os.path.join(byctifs.output_dir_path, basefilename)
+        base_writepath = os.path.join(byc_image_set.output_dir_path, basefilename)
 
         for channel_name, stack in translated_channels.items():
             print(f'Saving {channel_name} stack...')
@@ -204,20 +205,22 @@ def align_fov(fov_index, byctifs, write_output=True):
 
 def align_byc_expt(**kwargs):
     """
-    Find data using bycTifs() and align all channels and
+    Find data using bycImageSet() and align all channels and
     fovs in that data, then save the data
     """
     input_path = kwargs.get('input_path', None)
     write_output = kwargs.get('write_output', True)
 
     if input_path != None and os.path.exists(input_path):
-        byctifs = bycTifs(input_path)
+        byc_image_set = bycImageSet(input_path)
     else:
-        # Not an input path arg to bycTifs()
+        # Not an input path arg to bycImageSet()
         # will prompt the user to select one
-        byctifs = bycTifs()
+        byc_image_set = bycImageSet()
 
-    for fov_index in byctifs.fov_dir_paths_dict.keys():
-        print(f'Aligning FOV {fov_index+1} of {len(byctifs.fov_dir_paths_dict.keys())}')
-        align_fov(fov_index, byctifs, write_output=write_output)
+    for fov_index in byc_image_set.fov_dir_paths_dict.keys():
+        print(f'Aligning FOV {fov_index+1} of {len(byc_image_set.fov_dir_paths_dict.keys())}')
+        align_fov(fov_index, byc_image_set, write_output=write_output)
     print('Finished aligning')
+
+

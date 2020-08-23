@@ -231,3 +231,5 @@ def scan_start_frames(cell_df, col_name='yfp_norm', fit_func=single_exp, window_
     scan_fit_df = pd.concat(fit_result_dfs_list, ignore_index=True)
 
     return scan_fit_df
+
+

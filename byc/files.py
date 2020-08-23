@@ -134,7 +134,7 @@ def rename_steady_state():
     on that master index
     """
 
-    master_index_df = pd.read_csv(file_management.select_file("Choose master index .csv"))
+    master_index_df = pd.read_csv(files.select_file("Choose master index .csv"))
     exptdir = master_index_df.path.iloc[0]
     conditions = os.listdir(exptdir)
 
@@ -256,7 +256,7 @@ def reshape_timepoints(xy_dir_names, expt_dir, n_channels):
     """ 
     For each xy FOV, combine individual channel .tifs for each timepoint. Output
     Shape is (height, width, n_channels). This allows files to be read and aligned using 
-    byc.alignment.
+    byc.process.
     """    
     for xy_dir_name in xy_dir_names:
 
@@ -342,4 +342,7 @@ def get_dfs_list():
     else:
         print('Selection included non-csvs, no dfs and paths lists constructed')
         return None
+
+
+
 

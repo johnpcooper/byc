@@ -21,3 +21,5 @@ def determine_offsets(base_image, rotated_images):
         offsets.append(offset)
         
     return offsets
+
+

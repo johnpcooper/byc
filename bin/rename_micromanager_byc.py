@@ -1,4 +1,4 @@
-from byc.file_management import rename_byc
+from byc.files import rename_byc
 import sys
 
 def run():
@@ -16,3 +16,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
+

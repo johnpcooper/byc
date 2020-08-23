@@ -119,3 +119,5 @@ class ImageRotation(object):
         returned by _determine_rotation_offset(image)
         """
         return skimage.transform.rotate(image, offset)
+
+

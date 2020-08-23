@@ -130,7 +130,7 @@ class Cell_Stack(object):
         expt_type = master_cells_df.expt_type[cell_index]
         xy = str(int(master_cells_df.xy[cell_index]))
         # Should be the channel names used to create stacks as output
-        # of alignment. Channel names are separated by spaces in master_cells_df
+        # of process. Channel names are separated by spaces in master_cells_df
         self.channel_names = master_cells_df.channels_collected[cell_index].split()
 
         # Set a list of paths to the channel stacks
@@ -326,3 +326,5 @@ def save_cell_stacks():
                 imsave(save_path, concatenate_images(stack))
             except:
                 print(f"Could not save stacks for cell {cell_index}, img dims must agree")
+
+
