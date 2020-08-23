@@ -21,8 +21,12 @@ import tifffile as tf
 import tkinter as tk
 import tkinter.filedialog as dia
 
+# Start 2.0 imports
+import skimage
+import numpy as np
+from scipy import ndimage
 
-log = logging.getLogger(__name__)
+from byc import rotation
 
 class Constants(object):
     FIFTEEN_DEGREES_IN_RADIANS = 0.262
@@ -107,7 +111,11 @@ def _determine_registration_offset(base_image, uncorrected_image):
     :returns:   float, float
     
     """
-
+    # Original bounds:
+    left_bounds = (0.1, 0.3)
+    right_bounds = ( 0.7, 0.9)
+    # left_bounds = (0.35, 0.45)
+    # right_bounds = ( 0.6, 0.7)
     # Get the dimensions of the images that we're aligning
     base_height, base_width = base_image.shape
     uncorrected_height, uncorrected_width = uncorrected_image.shape
@@ -117,10 +125,10 @@ def _determine_registration_offset(base_image, uncorrected_image):
     # a large amount of debris/yeast/bacteria/whatever shows up in the central trench, the registration
     # algorithm goes bonkers if it's considering that portion of the image.
     # Thus we separately find the registration for the left side and right side, and average them.
-    left_base_section = base_image[:, int(base_width * 0.1): int(base_width * 0.3)]
-    left_uncorrected = uncorrected_image[:, int(uncorrected_width * 0.1): int(uncorrected_width * 0.3)]
-    right_base_section = base_image[:, int(base_width * 0.7): int(base_width * 0.9)]
-    right_uncorrected = uncorrected_image[:, int(uncorrected_width * 0.7): int(uncorrected_width * 0.9)]
+    left_base_section = base_image[:, int(base_width * left_bounds[0]): int(base_width * left_bounds[1])]
+    left_uncorrected = uncorrected_image[:, int(uncorrected_width * left_bounds[0]): int(uncorrected_width * left_bounds[1])]
+    right_base_section = base_image[:, int(base_width * right_bounds[0]): int(base_width * right_bounds[1])]
+    right_uncorrected = uncorrected_image[:, int(uncorrected_width * right_bounds[0]): int(uncorrected_width * right_bounds[1])]
 
     # 
     left_dy, left_dx = phase_cross_correlation(left_base_section, left_uncorrected, upsample_factor=20)[0]
@@ -188,7 +196,8 @@ def align_images(fov_path, channel_names):
         elif image.ndim >= 3: # if image has more than one channel,
         # align based on the first channel which should be brightfied (bf)
             vis_channel = image[0]
-        rotational_offset = _determine_rotation_offset(vis_channel)
+        vis_channel_rotation = rotation.ImageRotation(vis_channel, compute=True)
+        rotational_offset = vis_channel_rotation.offset
         print(rotational_offset)
         rotational_offsets.append(rotational_offset)
 
