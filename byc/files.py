@@ -4,6 +4,7 @@ import tkinter as tk
 import tkinter.filedialog as tkdia
 import os
 import re
+import shutil
 import ast
 from skimage import io
 from tifffile import imsave
@@ -111,9 +112,9 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
     found_channels = []
     for fov_channel_filename in channels:
         
-        for key in channel_dict.keys():
+        for key in channels_dict.keys():
 
-            if channel_dict[key] in fov_channel_filename:
+            if channels_dict[key] in fov_channel_filename:
 
                 src = os.path.join(fov_path, fov_channel_filename)
                 dst = os.path.join(exptdir, f'{base_filename}_{fov.zfill(3)}_{key}.tif')
@@ -122,7 +123,7 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
                 found_channels.append(key)
     
     # Check if we found a file for every channel dictated in the master_index
-    if len(found_channels) == len(channel_dict):
+    if len(found_channels) == len(channels_dict):
         pass
     else:
         print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
@@ -133,8 +134,9 @@ def rename_steady_state():
     state experiment. Then rename files tifs based
     on that master index
     """
-
-    master_index_df = pd.read_csv(files.select_file("Choose master index .csv"))
+    # updating this so that a new master index df is instantiated
+    # based on contents of the steady state exptdir
+    master_index_df = pd.read_csv(select_file("Choose master index .csv"))
     exptdir = master_index_df.path.iloc[0]
     conditions = os.listdir(exptdir)
 
@@ -154,6 +156,7 @@ def rename_steady_state():
         # the master index
         condition = find_condition(descriptor_list, conditions)
         if condition:
+            print(f'Condition found: {condition}')
             base_filename = f'{row.expt_date}_{row.plasmid}_{row.genotype}_C{row.clone}'
             base_path = f'{exptdir}\\{base_filename}'
             channel_dict = dict(zip(row.channel_names.split(), row.raw_channel_names.split()))

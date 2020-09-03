@@ -71,19 +71,22 @@ def get_master_index_paths(exptdir):
         print(f"Could not find any master_index.csv type files in exptdir:\n{exptdir}")
         return None
 
-def make_blank_master_index(exptdir, date, write=True):
+def make_blank_master_index(exptdir, date, expttype='byc', write=True):
     """
     Create a .csv from a standard, empty
     master_index_df
     """
-    df = pd.DataFrame(columns=constants.master_index_cols)
-    writepath = os.path.join(exptdir, f'{date}_master_index.csv')
+    if expttype == 'byc':
+        df = pd.DataFrame(columns=constants.master_index_cols)
+        writepath = os.path.join(exptdir, f'{date}_master_index.csv')
+
+    elif expttype == 'steadystate':
+        df = pd.DataFrame(columns=constants.master_index_cols)
+        writepath = os.path.join(exptdir, f'{date}_master_index.csv')
 
     if write:        
         df.to_csv(writepath, index=False)
         print(f"Saved blank master_index at:\n{writepath}")
-    else:
-        pass
 
     return df, writepath
 

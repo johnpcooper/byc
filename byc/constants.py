@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 
 def package_path(**kwargs):
     """
@@ -29,6 +30,7 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
 
 byc_data_dir = os.path.join(source_path, 'data\\')
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
+steady_state_data_dir = "C:\\Users\\John Cooper\\Box Sync\\Finkelstein-Matouschek\\images\\"
 
 master_index_cols = ['date',
                      'expt_type',
@@ -50,7 +52,34 @@ master_index_cols = ['date',
                      'Pos',
                      'dist_from_sen']
 
-default_channels = ['yfp', 'dsred']                     
+ss_master_index_cols = ['date',
+                        'expt_type',
+                        'fluor_channel_names'
+                        'channel_names',
+                        'raw_channel_names',
+                        'channel_exposures',
+                        r'tet_concn_uM',
+                        'n_end',
+                        'c_end',
+                        'plasmid',
+                        'clone',
+                        'exptdir',
+                        'genetic_background',
+                        'construct',
+                        'expr_type',
+                        'substrate_ctl',
+                        'note']
+
+
+default_channels = ['yfp', 'dsred']
+
+# Some constants for quickly accessing construct names and features
+plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/JC"
+
+
+else:
+    print(f'ERROR: No directory at: {plasmids_dir}')
+    plasmids_df = pd.DataFrame(None)                     
 
 class Patterns(object):
 
@@ -58,6 +87,7 @@ class Patterns(object):
 
         self.master_index_file = self.get_master_index_filename()
         self.date = self.get_date()
+        self.plasmid_name = self.get_plasmid_name()
 
     def get_master_index_filename(self):
         """
@@ -82,6 +112,13 @@ class Patterns(object):
         pattern = f"({centuries})({decades_years})({months})({days})"
         return pattern
 
+    def get_plasmid_name(self):
+        """
+        Return the plasmid name pattern:
+        'pJC' + 3 digits
+        """
+        indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f'(pJC)({indices})'
+        return pattern
+
 patterns = Patterns()
-
-
