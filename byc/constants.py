@@ -74,12 +74,7 @@ ss_master_index_cols = ['date',
 default_channels = ['yfp', 'dsred']
 
 # Some constants for quickly accessing construct names and features
-plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/JC"
-
-
-else:
-    print(f'ERROR: No directory at: {plasmids_dir}')
-    plasmids_df = pd.DataFrame(None)                     
+plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/JC"            
 
 class Patterns(object):
 
