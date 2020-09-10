@@ -31,6 +31,7 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
 byc_data_dir = os.path.join(source_path, 'data\\')
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
 steady_state_data_dir = "C:\\Users\\John Cooper\\Box Sync\\Finkelstein-Matouschek\\images\\"
+flow_data_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/flow_cytometry"
 
 master_index_cols = ['date',
                      'expt_type',
@@ -75,6 +76,7 @@ default_channels = ['yfp', 'dsred']
 
 # Some constants for quickly accessing construct names and features
 plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/JC"            
+strains_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/strains"
 
 class Patterns(object):
 
@@ -83,6 +85,7 @@ class Patterns(object):
         self.master_index_file = self.get_master_index_filename()
         self.date = self.get_date()
         self.plasmid_name = self.get_plasmid_name()
+        self.strain_name = self.get_strain_name()
 
     def get_master_index_filename(self):
         """
@@ -114,6 +117,15 @@ class Patterns(object):
         """
         indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
         pattern = f'(pJC)({indices})'
+        return pattern
+
+    def get_strain_name(self):
+        """
+        Return the strain name pattern
+        `JPC` or `BLS` + 3 digits
+        """
+        indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f'(BLS|JPC)({indices})'
         return pattern
 
 patterns = Patterns()

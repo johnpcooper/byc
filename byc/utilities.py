@@ -152,7 +152,7 @@ def get_all_master_index_paths(rootdir=constants.byc_data_dir, get_tags=False):
     tags_lists = []
     filepaths = []
 
-    for dirpath, dirnames, filenames in os.walk(constants.byc_data_dir):   
+    for dirpath, dirnames, filenames in os.walk(rootdir):   
 
         for filename in filenames:
             match = re.search(pattern, filename)
