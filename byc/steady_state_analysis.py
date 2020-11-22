@@ -53,6 +53,7 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                     filename = f'{info.path}\\{info.expt_date}_{info.plasmid}_{info.genotype}_C{info.clone}_00{fov}_{channel_name}.csv'
                     channel_df = pd.read_csv(filename)
                     channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
+                    channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
                     channel_dfs.append(channel_df)
 
                 fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
@@ -75,6 +76,73 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
         dfs_list.append(final_df)
         
     return dfs_list
+
+
+def make_expt_df(master_index_path, bg_channel='yfp', filter_cells=False):
+    """
+    Find a {exptdate}_master_index.csv file at master_index_df_path,
+    read in all steady state imaging measurement .csvs found 
+    recorded in that master_index as dataframes. Then take some ratios,
+    clean, etc. that data and return a concatenated dataframe of all
+    those measurement csvs
+    """
+    master_df = pd.read_csv(master_index_path)
+    all_dfs_list = set_steady_state_dfs_list(master_df, max_n_fovs=20)
+    all_data_df = pd.concat(all_dfs_list, sort=False, ignore_index=True)
+    
+    # Set a no-plasmid slice to define background values later
+    no_plasmid = all_data_df[all_data_df.plasmid == 'no-plasmid']
+    
+    # Get the fluor channel names manually recorded in master index
+    fluor_channels = master_df.fluor_channel_names.iloc[0].split(' ')
+    
+    # Set background autofluorescence values for each channel and normalize
+    for channel in fluor_channels:
+        
+        # Normalize signal to median of integrated fluorescence within cell 
+        # for no plasmid, BY4741 cells
+        channel_bg = no_plasmid[f'{channel}_mean'].median()
+        all_data_df.loc[:, f'{channel}_norm'] = all_data_df[f'{channel}_mean']/channel_bg
+        
+        # Normalize signal to median of integrated fluorescence within cell 
+        # for no plasmid, BY4741 cells
+        channel_bg = no_plasmid[f'{channel}_int'].median()
+        all_data_df.loc[:, f'{channel}_int_norm'] = all_data_df[f'{channel}_int']/channel_bg
+        
+    # Set coloumns containing ratios of each channel normalized
+    # and raw to each other channel
+    for channel in fluor_channels:
+        
+        other_channels = [name for name in fluor_channels if name != channel]
+        
+        for channel2 in other_channels:
+            
+            # Ratios of normalized mean within cell channel signals
+            ratios = all_data_df[f'{channel}_norm'] / all_data_df[f'{channel2}_norm']
+            all_data_df.loc[:, f'{channel}_{channel2}'] = ratios
+            # Ratios of raw mean within cell channel signals
+            rawratios = all_data_df[f'{channel}_mean'] / all_data_df[f'{channel2}_mean']
+            all_data_df.loc[:, f'{channel}_{channel2}_raw'] = rawratios
+            # Ratios of normalized integrated within cell channel signals
+            ratios = all_data_df[f'{channel}_int_norm'] / all_data_df[f'{channel2}_int_norm']
+            all_data_df.loc[:, f'{channel}_{channel2}_int'] = ratios
+            # Ratios of raw integrated within cell channel signals
+            rawratios = all_data_df[f'{channel}_int'] / all_data_df[f'{channel2}_int']
+            all_data_df.loc[:, f'{channel}_{channel2}_int_raw'] = rawratios
+
+    # Filter out background expr cells
+    if filter_cells:
+
+        std = all_data_df.loc[all_data_df.plasmid=='no-plasmid', f'{bg_channel}_mean'].std()
+        med = all_data_df.loc[all_data_df.plasmid=='no-plasmid', f'{bg_channel}_mean'].median()
+        thresh = med + 2*std
+        print(f'No-plasmid {bg_channel} median + 2*stdev = {thresh}')
+        all_data_df = all_data_df[all_data_df[f'{bg_channel}_mean'] > thresh]
+        
+    else:
+        pass
+        
+    return all_data_df
 
 def set_flow_cyto_dfs_list(master_df):
     
@@ -138,7 +206,33 @@ def set_proportional_weights_by_plasmid(df):
         print(f"weight={weight}")
         df.loc[plasmid_level, 'weight'] = weight
         
-    return df
+    return df.reset_index()
 
+def set_proportional_weights(df, by=['plasmid', 'genotype', 'clone']):
+    
+    """ Set the index of the dataframe using the list 
+        provided in by. Count the number of cells in 
+        each unique group according to that index and set
+        a weight value = 1 / proportion of total cells
+        in that unique group"""
+    
+    df.loc[:, 'weight'] = 0
+    df = df.set_index(by)
+
+    for group in df.index.unique():
+        print(group)
+        n_cells = len(df.loc[group, :])
+        print(f"Number of cells in {group} group = {n_cells}")
+        if n_cells != 0:
+            proportion = n_cells / len(df)
+            print(f"Fraction of all cells in {group} = {proportion}")
+            weight = 1 / proportion
+            print(f"weight={weight}")
+            df.loc[group, 'weight'] = weight
+        else:
+            print(f'No cells found in {group}')
+            df.loc[group, 'weight'] = 0
+        
+    return df.reset_index()
 
 

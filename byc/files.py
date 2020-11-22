@@ -128,12 +128,19 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
     else:
         print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
 
-def rename_steady_state():
+def rename_steady_state(tet_treated=False, return_index=False):
     """
     Ask the user to choose a master_index for their steady
     state experiment. Then rename files tifs based
     on that master index
+
+    condition_descriptor_cols should be a list of column names
+    found in '<expt_date>_master_index.csv'
+
+    Default conditions to look for in expt_dir are below
+    where descriptor_list is set
     """
+
     # updating this so that a new master index df is instantiated
     # based on contents of the steady state exptdir
     master_index_df = pd.read_csv(select_file("Choose master index .csv"))
@@ -150,14 +157,16 @@ def rename_steady_state():
                            row.plasmid,
                            row.genotype,
                            f'clone{row.clone}']
-
+        if tet_treated:
+            tet_concn = str(row.tet_concn).zfill(3) + 'uM-Tet'
+            descriptor_list.append(tet_concn)
         # Check if there's a directory that matches the 
         # descriptors provided for this condition in 
         # the master index
         condition = find_condition(descriptor_list, conditions)
         if condition:
             print(f'Condition found: {condition}')
-            base_filename = f'{row.expt_date}_{row.plasmid}_{row.genotype}_C{row.clone}'
+            base_filename = condition
             base_path = f'{exptdir}\\{base_filename}'
             channel_dict = dict(zip(row.channel_names.split(), row.raw_channel_names.split()))
             conditionpath = os.path.join(exptdir, condition)

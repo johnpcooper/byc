@@ -22,4 +22,9 @@ def determine_offsets(base_image, rotated_images):
         
     return offsets
 
-
+def filter_offsets(offsets, n=10):
+    """
+    Take an arry of (Y, X) offsets and replace outlier
+    values with the average of the surrounding n offsets
+    """
+    pass

@@ -40,7 +40,9 @@ def mean_filter(df, column_name, kernel_size, name_with_kernel=False):
         lower = i - offset
         upper = i + offset
         if lower < 0:
+            upper = upper + abs(lower)
             lower = 0
+
         elif upper >=len(df.loc[:, column_name]):
             upper = i
             
@@ -65,7 +67,9 @@ def median_filter(df, column_name, kernel_size, name_with_kernel=False):
         lower = i - offset
         upper = i + offset
         if lower < 0:
+            upper = upper + abs(lower)
             lower = 0
+            
         elif upper >=len(df.loc[:, column_name]):
             upper = i
             

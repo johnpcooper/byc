@@ -11,6 +11,9 @@ def single_exp(x, a, b, c):
 def double_exp(x, a, b, c, d, e):
     return a * np.exp(-b * x) + c * np.exp(-d * x) + e
 
+def gaussian(x, a, x0, sigma):
+    return a*np.exp(-(x-x0)**2/(2*sigma**2))
+
 def get_r_squared(y, y_pred):
     """
     Return R-squared as float defined as:
@@ -169,6 +172,8 @@ def get_all_fits_df(dfs_list, start_frame, window_size, fit_func=single_exp, col
             fit_params_dfs.append(pd.DataFrame(fit_params_dict))
         except:
             print('fit failed for cell', i)
+            if col_name not in dfs_list[i].columns:
+                print(f"Warning, no column with name {col_name} in cell df {i}")
             fit_params_dict = False
             
         fit_params_dicts.append(fit_params_dict)    

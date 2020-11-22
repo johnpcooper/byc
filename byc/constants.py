@@ -75,7 +75,9 @@ ss_master_index_cols = ['date',
 default_channels = ['yfp', 'dsred']
 
 # Some constants for quickly accessing construct names and features
-plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/JC"            
+plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/"
+plasmid_subdirs = ['YeastToolkit', 'JC', 'BLS']
+ytk_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/YeastToolkit"            
 strains_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/strains"
 
 class Patterns(object):
@@ -113,10 +115,10 @@ class Patterns(object):
     def get_plasmid_name(self):
         """
         Return the plasmid name pattern:
-        'pJC' + 3 digits
+        'pJC', 'pYTK', 'BLS', or 'pJBK' + 3 digits
         """
         indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
-        pattern = f'(pJC)({indices})'
+        pattern = f'(pJC|pYTK|pBLS|pJBK)({indices})'
         return pattern
 
     def get_strain_name(self):
