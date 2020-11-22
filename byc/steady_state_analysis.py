@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from scipy.stats import shapiro
@@ -37,6 +38,9 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
     """ Return a list of Dataframes, one for each distinct condition in the dataset
         e.g. plasmid, clone, genetic background """
     
+    if max_n_fovs == None:
+        max_n_fovs = 20
+
     dfs_list = []
     for dataset_index in range(0, len(master_df)):
     
@@ -47,26 +51,30 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
         fov_dfs_list = []
         for fov in fovs:
             channel_dfs = []
-            try: # Find all the fov csv files that match the conditions specified in info.
-                for channel_name in channel_names:
-
-                    filename = f'{info.path}\\{info.expt_date}_{info.plasmid}_{info.genotype}_C{info.clone}_00{fov}_{channel_name}.csv'
-                    channel_df = pd.read_csv(filename)
+            for channel_name in channel_names:
+                condition_descriptors = [info.expt_date,
+                                         info.plasmid,
+                                         info.genotype,
+                                         str(info.tet_concn).zfill(3)+'uM-Tet',
+                                         'clone' + str(info.clone),
+                                         str(fov).zfill(3),
+                                         channel_name]
+                filename = '_'.join(str(desc) for desc in condition_descriptors) + '.csv'
+                filepath = os.path.join(info.path, filename)
+                
+                if os.path.exists(filepath):
+                    print(f"Found data at {filepath}")
+                    channel_df = pd.read_csv(filepath)
                     channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
                     channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
                     channel_dfs.append(channel_df)
-
+            if len(channel_dfs) > 0:
+                
                 fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
                 fov_dfs_list.append(fov_merged_df)
-            except:
-                pass
-                #print(f"No FOV {fov} for dataset {dataset_index}")
+
+        final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
             
-        try: # this try except statement assumes that this will only fail if pd.concat has
-             # 0 objects to concatenate and this is because no files were found
-            final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
-        except:
-            print(f"No file at : {filename}")
         # add identifying information to final dataset:
         for i in range(0, len(master_df.columns)):
             column_name = list(master_df.columns)[i]
