@@ -56,6 +56,44 @@ def read_roi_position_indices(path):
         
     return np.array(bud_positions)
 
+def read_roi_as_df(path):
+    """
+    Iterate through individual ROIs in the ROI file. Typically
+    a stack of ROIs in time. Each ROI is a dictionary with
+    a key that is the serial number of that ROI and a bunch of
+    values which are also dicts
+    """
+    roi = read_roi_zip(path)
+    print(path)
+    frame_dfs = []
+    roi_index = 0
+    for key, val in roi.items():
+        print(roi_index)
+        # Cycle through the dictionaries for this ROI
+        # and add the information to a dataframe (roi_df)
+        frame_df = pd.DataFrame(columns=val.keys())
+        val_types = [type(item) for item in val.values()]
+        print(val['type'])
+        if list in val_types:
+            for k, v in val.items():
+            # Different dicts in the ROI have different dimensions
+            # that need to be accounted for when population roi_df
+                if type(v) == list and k == 'paths':
+                    pass
+                elif  type(v) == list and k != 'paths':
+                    frame_df[k] = v
+            for k, v in val.items():
+                if type(v) == int or type(v) == str or type(v) == float:
+                    frame_df.loc[:, k] = v
+
+            frame_df.loc[:, 'roi_index'] = roi_index
+            frame_df.loc[:, 'path'] = path
+            frame_dfs.append(frame_df)
+            roi_index += 1
+
+    roi_df = pd.concat(frame_dfs, ignore_index=True)
+    return roi_df
+
 def find_condition(descriptor_list, conditions):
     """
     Search conditions (a list of directory names) for 

@@ -80,12 +80,12 @@ class Cell_Stack(object):
         """
     
         cell_crop_roi_dfs = []
-
-        for cell_index in master_cells_df.index:
+        abs_i = 0
+        for cell_index in master_cells_df.cell_index:
             # 
-            compartment_dir = self.get_compartment_dir(master_cells_df, cell_index)
-            expt_date = int(master_cells_df.date[cell_index])
-            expt_type = master_cells_df.expt_type[cell_index]
+            compartment_dir = self.get_compartment_dir(master_cells_df, abs_i)
+            expt_date = int(master_cells_df.date[abs_i])
+            expt_type = master_cells_df.expt_type[abs_i]
             cell_rois_fp = f"{compartment_dir}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(3)}_crop_rois.zip"
 
             # cell_rois is an OrderedDict so I split the object up and put it in a dataframe 
@@ -115,7 +115,9 @@ class Cell_Stack(object):
                                          'width' : width,
                                          'height' : height})
 
-            cell_crop_roi_dfs.append(cell_rois_df)        
+            cell_crop_roi_dfs.append(cell_rois_df)
+
+            abs_i += 1
         
         return cell_crop_roi_dfs
     
@@ -124,7 +126,6 @@ class Cell_Stack(object):
         Return a list of tf.imread() objects (one for each channel collected in expt)
         read according to data in the master_cells_df
         """ 
-
         compartment_dir = self.get_compartment_dir(master_cells_df, cell_index)
         expt_date = int(master_cells_df.date[cell_index])
         expt_type = master_cells_df.expt_type[cell_index]
@@ -254,7 +255,7 @@ class Cell_Stack(object):
         for frame_height in frame_shapes_array[:, 0]:
 
             height_offset = max_height - frame_height
-            print(f"max height {max_height} - frame height {frame_height} = offset {height_offset}")
+            # print(f"max height {max_height} - frame height {frame_height} = offset {height_offset}")
             frame_height_offsets.append(height_offset)
 
         frame_width_offsets = []
@@ -280,7 +281,7 @@ class Cell_Stack(object):
                 h_filler_array = np.full((h_offset, frame.shape[1]), h_filler_value, dtype='uint16')
                 #print(f"h_filler_array shape {(h_filler_array.shape)}")
                 resized_frame = np.append(frame, h_filler_array, axis=0)
-                print(f"Shape of resized frame after adding h_filler_array {resized_frame.shape} and height offest {h_offset}")
+                # print(f"Shape of resized frame after adding h_filler_array {resized_frame.shape} and height offest {h_offset}")
 
                 w_filler_value = frame[:, -1].min()
                 w_filler_array = np.full((resized_frame.shape[0], w_offset), w_filler_value, dtype='uint16')
@@ -301,30 +302,34 @@ def save_cell_stacks():
         cell_indices = cs.master_cells_df.sub_coord
     except:
         cell_indices = cs.master_cells_df.cell_index
+    abs_i = 0
     for cell_index in cell_indices:
-    
-        # Run all the cropping and processing method of Cell_Stack on the cell
+        print('Cell index = ', cell_index) 
+        # Run all the cropping and processing methods of Cell_Stack on the cell
         # with cell_index
         cell_rois_dfs = cs.set_cell_crop_roi_dfs(cs.master_cells_df)
-        cell_cropped_channels_dict = cs.set_cell_cropped_stacks_dict(cs.master_cells_df, cell_rois_dfs, cell_index)
+        cell_cropped_channels_dict = cs.set_cell_cropped_stacks_dict(cs.master_cells_df, cell_rois_dfs, abs_i)
         cs.add_cell_otsu_thresholded_stack()
         resized_channels_dict = cs.set_resized_cell_cropped_channels_dict(cs.cell_cropped_channels_dict)
 
         # Save each stack (Note: compartment_dir is the dir holding all
         # xy FOVs for that flow compartment and therefore isolated genetic
         # + environmental etc. condition)
-        compartment_dir = cs.get_compartment_dir(cs.master_cells_df, cell_index)
-        expt_date = int(cs.master_cells_df.date[cell_index])
-        expt_type = cs.master_cells_df.expt_type[cell_index]
-        xy = str(int(cs.master_cells_df.xy[cell_index]))
+        # Need to use absolute i so the right compartment_dir etc. is
+        # selected when there are multiple compartments in a master_index
+        # and thus cell_index restarts
+        compartment_dir = cs.get_compartment_dir(cs.master_cells_df, abs_i)
+        expt_date = int(cs.master_cells_df.date[abs_i])
+        expt_type = cs.master_cells_df.expt_type[abs_i]
+        xy = str(int(cs.master_cells_df.xy[abs_i]))
 
         for channel_name, stack in resized_channels_dict.items():
             filename = f'{expt_date}_{expt_type}_xy{str(xy).zfill(2)}_cell{str(cell_index).zfill(3)}_{channel_name}_stack.tif'
             save_path = f'{compartment_dir}//{filename}'
             try:
-
                 imsave(save_path, concatenate_images(stack))
             except:
                 print(f"Could not save stacks for cell {cell_index}, img dims must agree")
+        abs_i += 1
 
 

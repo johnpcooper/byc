@@ -173,6 +173,23 @@ def get_all_master_index_paths(rootdir=constants.byc_data_dir, get_tags=False):
     else:
         return filepaths
 
+def get_filepaths_with_pattern(pattern, rootdir=constants.byc_data_dir):
+
+    filepaths = []
+
+    for dirpath, dirnames, filenames in os.walk(rootdir):   
+
+        for filename in filenames:
+            match = re.search(pattern, filename)
+
+            if match:
+                filepath = os.path.join(dirpath, filename)
+
+                if os.path.exists(filepath):
+                    filepaths.append(filepath)
+
+    return filepaths
+
 def get_all_master_index_dfs(**kwargs):
     """
     Return a list of dataframes made by reading

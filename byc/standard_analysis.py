@@ -138,29 +138,32 @@ class bycDataSet(object):
         senescent_slices = []
         
         for cell_index in range(0, len(cells_dfs)):
-            
             cell_df = cells_dfs[cell_index]
-            
-            sen_value = cell_df['sen_start'][cell_df.index.min()]
-            first_frame = cell_df['Pos'][cell_df.index.min()]
-            last_frame = cell_df['Pos'][cell_df.index.max()]
-            print("Checking senescence data for cell %s" % cell_index)
-            print("sen_value is %s" % sen_value)
-            print("first_frame is %s" % first_frame)
-            print("last_frame is %s" % last_frame)
-            
-            if sen_value == "FALSE":
+            if 'sen_start' in cell_df.columns:
+                               
+                sen_value = cell_df['sen_start'][cell_df.index.min()]
+                first_frame = cell_df['Pos'][cell_df.index.min()]
+                last_frame = cell_df['Pos'][cell_df.index.max()]
+                print("Checking senescence data for cell %s" % cell_index)
+                print("sen_value is %s" % sen_value)
+                print("first_frame is %s" % first_frame)
+                print("last_frame is %s" % last_frame)
                 
-                adj_sen_value = "FALSE"
-            
-            elif sen_value != "FALSE":
-            
-                sen_distance_from_start = int(sen_value) - int(first_frame)
-                print("sen_distance_from_start is %s" % sen_distance_from_start)
+                if sen_value == "FALSE":
+                    
+                    adj_sen_value = "FALSE"
+                
+                elif sen_value != "FALSE":
+                
+                    sen_distance_from_start = int(sen_value) - int(first_frame)
+                    print("sen_distance_from_start is %s" % sen_distance_from_start)
 
-                adj_sen_value = sen_distance_from_start              
-            
-            senescent_slices.append(adj_sen_value)
+                    adj_sen_value = sen_distance_from_start              
+                
+                senescent_slices.append(adj_sen_value)
+
+            else:
+                senescent_slices.append(0)
             
         return senescent_slices
 
@@ -210,11 +213,11 @@ class bycDataSet(object):
             # read the .csv containing measurements
             cell_trace_channel_paths = [os.path.join(path, f'{stack_title}_{name}_stack.csv') for name in channel_names]
             path_existances = [os.path.exists(path) for path in cell_trace_channel_paths]
-            if False in path_existances:
-                print("Old cell index formatting. Looking for single digit cell index and coordinate")
-                stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy), str(cell_index)))
-                # read the .csv containing measurements
-                cell_trace_channel_paths = [os.path.join(path, f'{stack_title}_{name}_stack.csv') for name in channel_names]
+            # if False in path_existances:    
+            #     print("Old cell index formatting. Looking for single digit cell index and coordinate")
+            #     stack_title = str("%s_%s_xy%s_cell%s" % (expt_date, expt_type, str(xy), str(cell_index)))
+            #     # read the .csv containing measurements
+            #     cell_trace_channel_paths = [os.path.join(path, f'{stack_title}_{name}_stack.csv') for name in channel_names]
             
             # Read in the dataframe for each channel collected and measured
             cell_trace_channel_dfs = []
@@ -296,7 +299,9 @@ class bycDataSet(object):
         elif len(cell_channel_dfs) > 1:
             # Expanded dataframe merge
             base_df = cell_channel_dfs[0]
+            mdf_row = master_index_df.loc[cell_index, :]
             for channel_df in cell_channel_dfs:
+                cols_to_add = [mdf_row[col] for col in master_index_df.columns]
                 cols_to_add = [col for col in channel_df.columns if col not in base_df.columns]
                 for col in cols_to_add:
                     base_df.loc[:, col] = channel_df.loc[:, col]

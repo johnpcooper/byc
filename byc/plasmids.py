@@ -139,7 +139,20 @@ def ng_ul_to_fmol_ul(dsDNA_len_bp, dsDNA_concn_ng_ul):
 
 def extend_nanodrop_df(spec_df_path, target_fmol_per_ul=40, writeoutput=True):
     """
-    
+    Open spec_df_path, which should be a .csv, as a dataframe.
+    Search for a plasmid matching each Sample ID value (eg pJC186)
+    using an instantiation of the plasmids.Plasmids() class.
+
+    I should modify the way plasmids etc. so that Sample ID
+    gets split on '_', then I search for a .dna file that
+    contains all those terms. A good example is a Sample ID
+    of pJC183_JC216_JC217_PCR. This way I can use more descriptive
+    names in the .dna files (like including part type and name)
+    but only need minimal descriptors in the nanodrop sample ID.
+
+    I'll only want to have this search for PCR products or digests trigger
+    if the word 'PCR' or 'digest' is in the Sample ID. Then it should look
+    in os.path.join(constants.plasmids_dir, 'PCRs_Digests')
     """
     specdf =pd.read_csv(spec_df_path)
     plsmds = Plasmids()

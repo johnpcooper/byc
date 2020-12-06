@@ -162,7 +162,8 @@ def get_all_fits_df(dfs_list, start_frame, window_size, fit_func=single_exp, col
         window_size = np.array([len(df) for df in dfs_list]).max()
     else:
         pass
-    end_frame = start_frame + window_size
+    
+    end_frame = int(start_frame) + int(window_size)
 
     fit_params_dicts = []
     fit_params_dfs = []

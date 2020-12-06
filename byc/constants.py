@@ -88,6 +88,9 @@ class Patterns(object):
         self.date = self.get_date()
         self.plasmid_name = self.get_plasmid_name()
         self.strain_name = self.get_strain_name()
+        self.crop_roi_df_file = self.get_crop_roi_df_file()
+        self.measurement_roi = self.get_measurement_roi_zip()
+        self.crop_roi = self.get_crop_roi_zip()
 
     def get_master_index_filename(self):
         """
@@ -128,6 +131,55 @@ class Patterns(object):
         """
         indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
         pattern = f'(BLS|JPC)({indices})'
+        return pattern
+
+    def get_crop_roi_df_file(self):
+        """
+        Return the crop roi df csv pattern
+        These types of files are generated when
+        Fiji runs python script byc.imagejpc.addcellroi.py
+        in the plugin imagejpc/utilities/save_cell_roi_set.py
+        and 'crop' roi type is selected
+        """
+        pattern = r'(.*)(crop_rois_df)(.*)(.csv$)'
+        return pattern
+
+    def get_crop_roi_zip(self):
+        """
+        Return the crop roi df csv pattern
+        These types of files are generated when
+        Fiji runs python script byc.imagejpc.addcellroi.py
+        in the plugin imagejpc/utilities/save_cell_roi_set.py
+        and 'crop' roi type is selected
+        """
+        pattern = r'(.*)(crop_rois)(.*)(.zip|.roi$)'
+        return pattern
+
+    def get_measurement_roi_df_file(self):
+        """
+        Return the measurement roi df csv pattern
+        These types of files are generated when
+        Fiji runs python script byc.imagejpc.addcellroi.py
+        in the plugin imagejpc/utilities/save_cell_roi_set.py
+        and 'measurement' roi type is selected
+        """
+        pattern = r'(.*)(measurement_rois_df)(.*)(.csv$)'
+        return pattern
+
+    def get_measurement_roi_zip(self):
+        """
+        Return the measurement roi .zip or .roi
+        filename pattern
+        These types of files are generated when
+        Fiji runs python script byc.imagejpc.addcellroi.py
+        in the plugin imagejpc/utilities/save_cell_roi_set.py
+
+        These are stacks of single cell outlines over a byc
+        experiment created in Fiji based on cropped cell stacks
+        output from byc/bin/run_segmentation.py
+        and 'measurement' roi type is selected
+        """
+        pattern = r'(.*)(measurement_rois)(.*)(.zip|.roi$)'
         return pattern
 
 patterns = Patterns()

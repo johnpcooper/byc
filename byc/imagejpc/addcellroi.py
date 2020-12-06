@@ -130,7 +130,7 @@ def record_cell_roi_set(cell_index,
                       **kwargs):
 
     write = kwargs.get('write', True)
-    channels_collected = kwargs.get('channels_collected', 'bf yfp dsred')
+    channels_collected = kwargs.get('channels_collected', 'bf yfp rfp')
     imp_filename = utilities.filename_from_path(active_imp_path)
     exptdir = get_exptdir(active_imp_path)
     expt_type = 'byc'

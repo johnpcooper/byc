@@ -33,11 +33,11 @@ def make_dfs(prompt):
         dfs.append(pd.read_csv(fns[i]))
     return dfs, fns
 
-def set_steady_state_dfs_list(master_df, max_n_fovs):    
-    """
-    Return a list of Dataframes, one for each distinct condition in the dataset
-    e.g. plasmid, clone, genetic background
-    """    
+def set_steady_state_dfs_list(master_df, max_n_fovs):
+    
+    """ Return a list of Dataframes, one for each distinct condition in the dataset
+        e.g. plasmid, clone, genetic background """
+    
     if max_n_fovs == None:
         max_n_fovs = 20
 
@@ -61,21 +61,18 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                                          channel_name]
                 filename = '_'.join(str(desc) for desc in condition_descriptors) + '.csv'
                 filepath = os.path.join(info.path, filename)
-                print(f'Looking for data at {filepath}')
                 
                 if os.path.exists(filepath):
-                    print(f"Found data")
+                    print(f"Found data at {filepath}")
                     channel_df = pd.read_csv(filepath)
                     channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
                     channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
                     channel_dfs.append(channel_df)
+                    fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
+                    fov_dfs_list.append(fov_merged_df)
                 else:
-                    print(f'No data found')
+                    pass           
 
-            if len(channel_dfs) > 0:
-                fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
-                fov_dfs_list.append(fov_merged_df)
-        print(f'Found {len(fov_dfs_list)} .csvs')
         final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
             
         # add identifying information to final dataset:

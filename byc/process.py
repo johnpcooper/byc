@@ -157,7 +157,7 @@ def translate_channels(channels_dict, offsets):
 
     return translated_channels
 
-def align_fov(fov_index, byc_image_set, write_output=True):
+def align_fov(fov_index, byc_image_set, write_output=True, rotate=False):
     """
     Pass this function an process.bycImageSet() instance which
     it will use to get data for the fov at fov_index, align
@@ -168,10 +168,13 @@ def align_fov(fov_index, byc_image_set, write_output=True):
     If write_output==False, return the translated channels_dict
     """
     channels = byc_image_set.fov_channels_dict(fov_index, byc_image_set.fov_dir_paths_dict)
-    # Find a good rotational offset and rotate images in each channel
-    # stack by that rotational offset
-    median_offset = get_median_rotational_offset(channels['Brightfield'])
-    rotated_channels = rotate_channels(channels, median_offset)
+    if rotate:
+        # Find a good rotational offset and rotate images in each channel
+        # stack by that rotational offset
+        median_offset = get_median_rotational_offset(channels['Brightfield'])
+        rotated_channels = rotate_channels(channels, median_offset)
+    else:
+        rotated_channels = channels
     # Find translational offsets
     # Registration typicall works better when I 
     # use an image later in the stack for

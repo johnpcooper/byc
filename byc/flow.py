@@ -97,23 +97,42 @@ class Experiments(object):
                     
         return df
 
-    def exptdf(self, exptdate):
+    def exptdf(self, exptdate, **kwargs):
         """
         Return a dataframe holding all flow observations
         found according to the master_idx
+
+        Optionally pass a master_index_df kwarg to avoid
+        trying to automatically set a master_index_df
         """
-        master_idx = self.master_idx_by_date(exptdate)
+        if 'master_index_df' in kwargs:
+            master_idx = kwargs['master_index_df']
+        else:
+            master_idx = self.master_idx_by_date(exptdate)    
+
         sampledfs = []
         # Read in data and add identifying information
+        # based on master index
+        print(f'Found master index with {len(master_idx)} samples at')
         for idx in master_idx.index:
-            row = master_idx.loc[idx, :]    
-            sampledf = FCMeasurement(ID=f'{row.strain}-{row.clone}', datafile=row.filepath).data
-            
-            for col in row.index:
-                sampledf.loc[:, col] = row.loc[col]
-                
-            sampledfs.append(sampledf)
-            
-        exptdf = pd.concat(sampledfs, ignore_index=True)
+            row = master_idx.loc[idx, :]
+            print(f'Looking for data at {row.filepath}')
+
+            if os.path.exists(row.filepath):
+                print(f'Found data')
+                sampledf = FCMeasurement(ID=f'{row.strain}-{row.clone}', datafile=row.filepath).data
+                print(f'Found {len(sampledf)} measurements in this file')
+                # Annotate sample df
+                for col in row.index:
+                    sampledf.loc[:, col] = row.loc[col]
+                sampledfs.append(sampledf)
+            else:
+                print(f'No data found')
+
+        if len(sampledfs) > 0:
+            exptdf = pd.concat(sampledfs, ignore_index=True)
+        else:
+            exptdf = None
+            print(f'No data found for exptdate {exptdate}')
 
         return exptdf
