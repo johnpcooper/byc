@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from read_roi import read_roi_zip
 
-from byc import constants, utilities, database
+from byc import constants, utilities, database, files
 
 # Recently updated bycDataSet so that you instantiate
 # it by giving it a key through which it can find
@@ -29,14 +29,22 @@ class bycDataSet(object):
 
         # example gotten from one of byc.database.byc_database.master_index_dfs_dict.keys()
         example_compartment_name = '20200214_byc'
-        self.compartment_name = kwargs.get('compartment_name', example_compartment_name)
-        
+        self.compartment_name = kwargs.get('compartment_name', None)
+        self.master_index_df = kwargs.get('mdf', None)
         if manual_select:
             # set the files that will be used for every cell analyzed
             self.master_index_df = self.select_master_index_df("Choose the .csv for the master index of this experiment")
-        elif self.compartment_name != None:
-            self.master_index_df = database.byc_database.master_index_dfs_dict[self.compartment_name]
-            self.master_index_df = self.clean_master_index_df(self.master_index_df)
+        else:
+            # Use compartment name to fetch a master index df
+            # using database.byc_database.
+            # If no kwarg for compartment_name, look for a
+            # master index df object in kwargs as 'mdf'
+
+            if self.compartment_name != None:
+                self.master_index_df = database.byc_database.master_index_dfs_dict[self.compartment_name]
+                self.master_index_df = self.clean_master_index_df(self.master_index_df)
+            
+
         # Read in data for each cell in the master index, add proper
         # time column and other annotations from the master index df
         self.cell_trace_dfs = self.make_cell_trace_dfs(self.master_index_df)
@@ -111,6 +119,7 @@ class bycDataSet(object):
                     # because I don't want the time columns to get
                     # labelled with '_<channel_name>'
                     hours = ((df.Slice-1)*collection_interval)/60
+                    print(f"Looking for crop ROIs at {cellrow.crop_roi_set_path}")
                     rois = read_roi_zip(cellrow.crop_roi_set_path)
                     first_position = rois[list(rois.keys())[0]]['position']
                     first_position_ind = first_position - 1
@@ -194,6 +203,55 @@ def get_dfs_list():
         cell_trace_dfs_list.append(df)
         
     return cell_trace_dfs_list
+
+def get_bud_hours(celldf, reference='death'):
+    """
+    Return a numpy array containing timepoints
+    of bud appearances
+    """
+    try:
+        collection_interval = celldf.collection_interval.unique()[0]
+    except:
+        collection_interval = 10
+        print(f'Warning! Defaulting to collection interval of {collection_interval} minutes')
+
+    # Create empty columns
+    bud_rois_inds = np.full(len(celldf), np.nan)
+    bud_abs_hours = np.full(len(celldf), np.nan)
+    bud_hours =  np.full(len(celldf), np.nan)
+    bud_hours_to_death = np.full(len(celldf), np.nan)
+
+    if True in celldf.bud_roi_set_path.values:
+        print(f'No path found in celldf with xy {celldf.xy.unique()[0]} and cell_index{celldf.cell_index.unique()[0]}')
+        return None
+    else:
+        bud_rois_path = celldf.bud_roi_set_path.iloc[0]
+        print(bud_rois_path)
+        bud_rois_inds = files.read_roi_position_indices(bud_rois_path)
+        bud_abs_hours = (bud_rois_inds*collection_interval)/60
+        bud_hours =  bud_abs_hours - celldf.abs_hours.min()
+        bud_hours_to_death = celldf.hours.max() - bud_hours
+
+    vals = [bud_rois_inds,
+            bud_abs_hours,
+            bud_hours,
+            bud_hours_to_death]
+
+    keys = ['bud_rois_inds',
+            'bud_abs_hours',
+            'bud_hours',
+            'bud_hours_to_death']
+    
+    if reference == 'death':
+        return bud_hours_to_death
+    elif reference == 'experiment_start':
+        return bud_abs_hours
+    elif reference == 'cell_obs_start':
+        return bud_hours
+    else:
+        print(f"Bad reference passed: {reference}")
+        print("Returning bud roi frame indices")
+        return bud_roi_inds
 
 
 

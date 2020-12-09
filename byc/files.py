@@ -45,7 +45,13 @@ def select_directory(prompt):
     return input_dir
 
 def read_roi_position_indices(path):
+    """
+    Read the .zip or .roi Fiji ROI file at <path>
+    and return the 0 based index for each position
+    in that file (eg position 1 becomes index 0)
 
+    Return the position indices as a numpy array
+    """
     roi_set = read_roi_zip(path)
     keys = list(roi_set.keys())
     

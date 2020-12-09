@@ -91,6 +91,7 @@ class Patterns(object):
         self.crop_roi_df_file = self.get_crop_roi_df_file()
         self.measurement_roi = self.get_measurement_roi_zip()
         self.crop_roi = self.get_crop_roi_zip()
+        self.bud_roi_df_file = self.get_bud_roi_df_file()
 
     def get_master_index_filename(self):
         """
@@ -180,6 +181,17 @@ class Patterns(object):
         and 'measurement' roi type is selected
         """
         pattern = r'(.*)(measurement_rois)(.*)(.zip|.roi$)'
+        return pattern
+
+    def get_bud_roi_df_file(self):
+        """
+        Return the bud roi df csv pattern
+        These types of files are generated when
+        Fiji runs python script byc.imagejpc.addcellroi.py
+        in the plugin imagejpc/utilities/save_cell_roi_set.py
+        and 'bud' roi type is selected
+        """
+        pattern = r'(.*)(bud_rois_df)(.*)(.csv$)'
         return pattern
 
 patterns = Patterns()

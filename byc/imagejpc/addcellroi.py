@@ -144,8 +144,7 @@ def record_cell_roi_set(cell_index,
     xy = int(imp_filename[imp_filename.rindex('xy') + 2: imp_filename.rindex('xy') + 4])
     date = imp_filename[0:8]
 
-    # Create path names relative to byc source/data directory
-    
+    # Create path names relative to byc source/data directory    
     active_imp_rel_path = utilities.get_relpath(active_imp_path)
     roi_set_rel_path = utilities.get_relpath(roi_set_save_path)
     if active_imp_rel_path == None and roi_set_rel_path == None:
