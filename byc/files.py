@@ -62,6 +62,36 @@ def read_roi_position_indices(path):
         
     return np.array(bud_positions)
 
+def read_rectangular_rois_as_df(rois_path):
+    """
+    Use the read_roi package to read in the
+    Fiji roi file at rois_path, store information
+    from that roi file in a dataframe, and 
+    return the dataframe
+    """
+    rois_dict = read_roi_zip(rois_path)
+    # Create a dataframe using the crop rois file
+    keys = [key for key in rois_dict.keys()]
+    roi_dfs = []
+    for key in keys:
+        roi_dict = rois_dict[key]
+        roi_df = pd.DataFrame(roi_dict, index = [key])
+        roi_dfs.append(roi_df)
+
+    rois_df = pd.concat(roi_dfs).reset_index(drop=True)
+    # Add position_max so that we can which range of 
+    # stack frame positions should use this ROI to find 
+    # a cell etc.
+    for index in rois_df.index:
+        if index != np.max(rois_df.index):
+            position_max = rois_df.loc[index+1, 'position'] - 1
+        else:
+            position_max = rois_df.loc[index, 'position']
+            
+        rois_df.loc[index, 'position_max'] = int(position_max)
+        
+    return rois_df
+
 def read_roi_as_df(path):
     """
     Iterate through individual ROIs in the ROI file. Typically
@@ -375,7 +405,7 @@ def set_file_paths(prompt):
     # create the dialog box and set the fn
     root = tk.Tk()
     fps = tkdia.askopenfilenames(parent=root, title=prompt)
-    root.destroy() # very important to destroy the root object, otherwise python 
+    root.destroy() # important to destroy the root object, otherwise python 
     # just keeps running in a dialog box
 
     return fps # return the path to the file you just selected

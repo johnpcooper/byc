@@ -10,6 +10,7 @@ import pandas as pd
 from skimage.io import imsave, concatenate_images
 from skimage.filters import threshold_otsu
 from skimage import img_as_uint
+from scipy.signal import medfilt, find_peaks
 from read_roi import read_roi_file, read_roi_zip
 
 from byc import constants, utilities
@@ -333,3 +334,141 @@ def save_cell_stacks():
         abs_i += 1
 
 
+def radial_avg_intensity(img, x_center, y_center, **kwargs):
+    """
+    Return two 1D arrays: (rad, intensity)
+    rad is a set of radial distances from the x and y
+    center coordinates and intensity is average intensity
+    in rings of each of those distances away from center
+    """
+    bin_size = kwargs.get('bin_size', 1)
+    # Get image parameters
+    a = img.shape[0]
+    b = img.shape[1]
+    # X is a matrix that gives the X coordinate at each pixel 
+    # Y is a matrix that gives the Y coordinate at each pixel
+    # X = 0 and Y = 0 is at the center point
+    [X, Y] = np.meshgrid(np.arange(b) - x_center, np.arange(a) - y_center)
+    # R is then the radial distance from the center to each pixel 
+    # (a squared + b squared = c squared)
+    R = np.sqrt(np.square(X) + np.square(Y))
+    # rad is a 1d array that will be used as the
+    # x axis later. It's a range that covers all
+    # possible radial distances from our center pixel
+    # to whatever the maximum distance was from center
+    # found in R
+    rad = np.arange(1, np.max(R), 1)
+    # intensity will be filled with average
+    # intensity at each radial distance from
+    # center found in rad
+    intensity = np.zeros(len(rad))
+    index = 0
+    for i in rad:
+        # For each radial distance found in rad (the x axis), select
+        # all the values in R (radial distances from center at each
+        # coordinate) and store those coordinates in a boolean mask.
+        # Then use that mask to select all the intensity values from
+        # the original image and take the mean
+        mask = (np.greater(R, i - bin_size) & np.less(R, i + bin_size))
+        values = img[mask]
+        intensity[index] = np.mean(values)
+        index += 1
+    return rad, intensity
+
+def get_polar_coordinates(img, x_center, y_center):
+    """
+    Return (R, theta): two arrays of the same shape as img.
+    R is radial distance from x_center, y_center.
+    Theta is angle from horizontal in radians.
+    """
+    # Get image parameters
+    a = img.shape[0]
+    b = img.shape[1]
+    # X is a matrix that gives the X coordinate at each pixel 
+    # Y is a matrix that gives the Y coordinate at each pixel
+    # X = 0 and Y = 0 is now the center point
+    [X, Y] = np.meshgrid(np.arange(b) - x_center, np.arange(a) - y_center)
+    # R is then the radial distance from the center to each pixel 
+    # (a squared + b squared = c squared)
+    R = np.sqrt(np.square(X) + np.square(Y))
+    theta = np.arctan2(Y, X)
+    
+    return R, theta
+
+def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
+    """
+    Return a polar intensity dataframe with calculated
+    intensity at a range of theta, radial distance polar
+    coordinates
+    """
+    distance_max = kwargs.get('distance_max', 20)
+    distance_min = kwargs.get('distance_min', 0)
+    theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
+    dist_bin_size = kwargs.get('dist_bin_size', 1)
+    thetas = np.arange(-np.pi, np.pi, theta_bin_size)
+    dists = np.arange(distance_min, distance_max, dist_bin_size)
+    # Initialize dataframe to be filled with intensities
+    # as a function of (theta_bin, radial_distance_bin)
+    df = pd.DataFrame(index=np.arange(0, len(thetas)*len(dists), 1))
+    for i, t in enumerate(thetas):
+        df.loc[i*len(dists):i*len(dists) + len(dists), 'theta'] = t
+        for dist_i, dist in enumerate(dists):
+            df.loc[i*len(dists) + dist_i, 'radial_distance'] = dist
+    # Fill the dataframe above with calculated average intensity
+    # for all pixels that fall within each theta, radial_distance bin
+    R, theta = get_polar_coordinates(img, x_center, y_center)
+    for index in df.index:
+        t = df.loc[index, 'theta']
+        dist = df.loc[index, 'radial_distance']
+        # print(f'Looking for pixels at {t} radians, {dist} pixels')
+        theta_mask = (np.greater(theta, t - theta_bin_size) & np.less(theta, t + theta_bin_size))
+        dist_mask = (np.greater(R, dist - dist_bin_size) & np.less(R, dist + dist_bin_size))
+        values = img[(theta_mask & dist_mask)]
+        df.loc[index, 'intensity'] = np.mean(values)
+
+    df.loc[:, 'x_center'] = x_center
+    df.loc[:, 'y_center'] = y_center
+
+    return df
+
+def polar_intensity_peaks(polar_intensity_df, **kwargs):
+    """
+    For each theta value in polar_intensity_df, find peaks
+    in intensity at varying radial_distance from center. 
+    Add a column to the polar_intensity_df that records 
+    distance at which largest peak was found, etc.
+
+    polar_intensity_df should be created using
+    byc.segmentation.intensity_by_distance_and_theta
+    """
+    # Number of pixels to add to distance at which
+    # peak was found
+    peak_dist_offset = kwargs.get('peak_offset', -3)
+    peak_height_threshold = kwargs.get('peak_height_threshold', 100)
+    medfilt_kern_size = kwargs.get('medfilt_kern_size', 7)
+    df = polar_intensity_df
+    df.loc[:, 'peak_X'] = np.nan
+    df.loc[:, 'peak_Y'] = np.nan
+    x_center = df.x_center.iloc[0]
+    y_center = df.y_center.iloc[0]
+
+    for t in df.theta.unique():
+        intensity = df.loc[df.theta == t, 'intensity']
+        intensity_medfilt = medfilt(intensity, kernel_size=medfilt_kern_size)
+        peaks = find_peaks(intensity,
+                           height=np.array([peak_height_threshold, None]))
+        # Make sure peaks were found before trying to add them to the dataframe
+        if len(peaks[0]) > 0:
+            highest_peak_index = np.argmax(peaks[1]['peak_heights'])
+            highest_peak_dist = peaks[0][highest_peak_index] + 1
+            first_peak = peaks[0][0] + 1
+            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist + peak_dist_offset
+            df.loc[df.theta==t, 'first_peak_dist'] = first_peak
+            # Add cartesian coordinates for max amplitude peak found
+
+            df.loc[df.theta==t, 'peak_X'] = highest_peak_dist*np.cos(t) + x_center
+            df.loc[df.theta==t, 'peak_Y'] = highest_peak_dist*np.sin(t) + y_center
+        else:
+            print(f'No peaks found at {t} radians')
+
+    return df

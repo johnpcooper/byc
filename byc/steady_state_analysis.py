@@ -231,17 +231,17 @@ def set_proportional_weights(df, by=['plasmid', 'genotype', 'clone']):
     df = df.set_index(by)
 
     for group in df.index.unique():
-        print(group)
+        # print(group)
         n_cells = len(df.loc[group, :])
-        print(f"Number of cells in {group} group = {n_cells}")
+        # print(f"Number of cells in {group} group = {n_cells}")
         if n_cells != 0:
             proportion = n_cells / len(df)
-            print(f"Fraction of all cells in {group} = {proportion}")
+            # print(f"Fraction of all cells in {group} = {proportion}")
             weight = 1 / proportion
-            print(f"weight={weight}")
+            # print(f"weight={weight}")
             df.loc[group, 'weight'] = weight
         else:
-            print(f'No cells found in {group}')
+            # print(f'No cells found in {group}')
             df.loc[group, 'weight'] = 0
         
     return df.reset_index()

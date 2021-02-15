@@ -158,6 +158,7 @@ class bycDataSet(object):
             cell_df[col] = cellrow[col]
         # Add time information defined above
         cell_df.loc[:, 'hours'] = hours
+        cell_df.loc[:, 'frame_index'] = (hours*60)/collection_interval
         cell_df.loc[:, 'abs_hours'] = abs_hours
         cell_df.loc[:, 'hours_to_death'] = hours_to_death
         cell_df.loc[:, 'total_hours'] = (len(hours)*collection_interval)/60
@@ -208,6 +209,11 @@ def get_bud_hours(celldf, reference='death'):
     """
     Return a numpy array containing timepoints
     of bud appearances
+
+    Accepted references are:
+    death (correspends to 'hours_to_death' column of celldf)
+    expt_start (corresponds to 'abs_hours' column)
+    cell_obs_start (corresponds to 'hours' column)
     """
     try:
         collection_interval = celldf.collection_interval.unique()[0]
