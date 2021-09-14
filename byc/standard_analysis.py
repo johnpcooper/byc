@@ -21,7 +21,7 @@ class bycDataSet(object):
     Upon instantiation, ask the user to choose a master index for the experiment
     they want to create trace dataframes for each cell in the master index.
 
-    Should be run after segemnting cells, then creating measurement rois
+    Should be run after segmenting cells, then creating measurement rois
     using imagejpc/utilities/save_cell_roi_set, and then creating and saving 
     those measurements using imagejpc/utilities/measure_rois
     """       
@@ -97,17 +97,18 @@ class bycDataSet(object):
         and return the completed dataframe
         """
         mdf = master_index_df
-        cellrow = mdf.loc[index, :]
+        cellrow = mdf.set_index('cell_index').loc[index, :]
+        cellrow['cell_index'] = index
         base_filename = f'{cellrow.date}_byc_xy{str(cellrow.xy).zfill(2)}_cell{str(cellrow.cell_index).zfill(3)}'
         pattern = f'({base_filename})_(.+)_(stack.csv)'
+        measurement_dfs = []
         for dirpath, dirnames, filenames in os.walk(cellrow.compartment_dir):   
-            measurement_dfs = []
             matches = []
             for filename in filenames:
                 match = re.search(pattern, filename)
-                if match:
-                    # Define path to file and read in as dataframe
-                    filepath = os.path.join(dirpath, filename)
+                # Define path to file and read in as dataframe
+                filepath = os.path.join(dirpath, filename)
+                if match:                    
                     print(f'Found data for cell {index} at {filepath}')
                     df = pd.read_csv(filepath)
                     # Set time data. Absolute hours is hours
@@ -136,33 +137,48 @@ class bycDataSet(object):
                     # Name the measurement data with the fluorescent channel.
                     # Add identifying information from master index
                     channel = match.group(2)
+                    print(f'Adding data from {channel} channel')
                     newcols = [f'{col}_{channel}' for col in df.columns]
                     df.columns = newcols
+                    if pd.DataFrame(df).empty:
+                        print(f'Empty dataframe created from data found at \n{filepath}')
+                    print(f'Length of channel df {len(df)}')
                     measurement_dfs.append(df)
-
-        if len(measurement_dfs) == 1:
+                    print(f'Length of channel dfs now {len(measurement_dfs)}')
+        n_meas_dfs = len(measurement_dfs)
+        print(f'Found {n_meas_dfs} channel dfs')
+        if n_meas_dfs == 1:
             # Only one channel df found
-            cell_df = measurement_dfs[0]        
-        elif len(measurement_dfs) > 1:
-            # Multiple channels, need to combine
-            for df in measurement_dfs[1:]:
-                cell_df = measurement_dfs[0].join(df)
-        else:
+            cell_df = measurement_dfs[0]
+        elif n_meas_dfs == 2:
+            # Two channels, need to combine
+            cell_df = measurement_dfs[0].join(measurement_dfs[1])
+        elif n_meas_dfs == 3:
+            # Three channels, need to combine. Haven't found
+            # a good way to merge more than two dataframes :(
+            cell_df = measurement_dfs[0].join(measurement_dfs[1])
+            cell_df = cell_df.join(measurement_dfs[2])
+        elif len(measurement_dfs) < 1:
             # No data found
             print(f'No data found for cell with pattern: {pattern}')
+            print(f'Base filename: {base_filename}')
             print(f'Checked compartment dir: {cellrow.compartment_dir}')
             return None
         
         # Add annotation information to the cell trace df
         for col in mdf.columns:
-            cell_df[col] = cellrow[col]
+            print(f'Adding {col} from master index')
+            cell_df.loc[:, col] = cellrow[col]
         # Add time information defined above
         cell_df.loc[:, 'hours'] = hours
         cell_df.loc[:, 'frame_index'] = (hours*60)/collection_interval
         cell_df.loc[:, 'abs_hours'] = abs_hours
         cell_df.loc[:, 'hours_to_death'] = hours_to_death
         cell_df.loc[:, 'total_hours'] = (len(hours)*collection_interval)/60
-            
+
+        if pd.DataFrame(cell_df).empty==True:
+            print(f'Warning, empty dataframe from cell with base filename {base_filename}')
+        print(f'Created cell_df with length {len(cell_df)}')
         return cell_df
 
     def make_cell_trace_dfs(self, master_index_df):
@@ -181,7 +197,8 @@ class bycDataSet(object):
                 print(f'Multiple entries for cell at row {i}')
                 pass
             else:
-                cell_df = self.make_cell_trace_df(mdf, i)
+                cell_index = cellrow.cell_index
+                cell_df = self.make_cell_trace_df(mdf, cell_index)
                 cell_dfs.append(cell_df)
         
         return cell_dfs
@@ -259,6 +276,45 @@ def get_bud_hours(celldf, reference='death'):
         print("Returning bud roi frame indices")
         return bud_roi_inds
 
+def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
 
-
-
+    mdf.loc[:, 'bud_roi_set_path'] = np.nan
+    mdf.loc[:, 'rls'] = np.nan
+    mdf.loc[:, 'dist_from_sen'] = np.nan
+    mdf.loc[:, 'age_at_chase'] = np.nan
+    bud_dfs = []
+    for idx in buds_mdf.index:
+        bud_roi_set_path = buds_mdf.bud_roi_set_path[idx]
+        cell_index = buds_mdf.cell_index[idx]
+        # Need to define death offset because if death was observed, the last
+        # annotated 'bud' frame is actually the last frame before death, not
+        # a budding event
+        if buds_mdf.loc[idx, 'end_event_type'] == 'death':
+            death_offset = 1
+            print(f'death observed for cell {idx}')
+        elif buds_mdf.loc[idx, 'end_event_type'] == 'sen':
+            death_offset = 0
+            print(f'Death not observed for cell {idx}')
+        elif buds_mdf.loc[idx, 'end_event_type'] == 'escape':
+            death_offset = 0
+        if os.path.exists(bud_roi_set_path):
+            mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
+            bud_roi_df = files.read_rectangular_rois_as_df(bud_roi_set_path)
+            bud_roi_df.loc[:, 'frame'] = bud_roi_df.position - 1
+            age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=abs_chase_frame, :])
+            dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>abs_chase_frame, :]) - death_offset
+            rls = len(bud_roi_df) - death_offset
+            # Annotate master index df with cell survival, first bud roi,
+            # distance from senescence at start of chase, etc.
+            mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
+            mdf.loc[idx, 'rls'] = rls
+            mdf.loc[idx, 'dist_from_sen'] = dist_from_sen
+            mdf.loc[idx, 'age_at_chase'] = age_at_chase
+            first_roi_pos = bud_roi_df.loc[0, 'position']
+            mdf.loc[idx, 'first_bud_frame'] = first_roi_pos - 1
+            bud_roi_df.loc[:, 'cell_index'] = cell_index
+            bud_dfs.append(bud_roi_df)
+    if return_bud_roi_df:
+        return (mdf, pd.concat(bud_dfs, ignore_index=True))
+    else:
+        return mdf

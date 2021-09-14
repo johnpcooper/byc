@@ -31,6 +31,8 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
 byc_data_dir = os.path.join(source_path, 'data\\')
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
 steady_state_data_dir = "C:\\Users\\John Cooper\\Box Sync\\Finkelstein-Matouschek\\images\\"
+steady_state_data_path = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
+steady_state_rep_image_dir  = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\representative_images"
 flow_data_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/flow_cytometry"
 
 master_index_cols = ['date',
@@ -72,13 +74,17 @@ ss_master_index_cols = ['date',
                         'note']
 
 
-default_channels = ['yfp', 'dsred']
+default_fluor_channels = ['yfp', 'rfp']
+default_channel_names = ['bf', 'yfp', 'rfp']
+default_raw_channel_names = ['Brightfield', 'YFP', 'RFP']
 
 # Some constants for quickly accessing construct names and features
 plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/"
 plasmid_subdirs = ['YeastToolkit', 'JC', 'BLS']
 ytk_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/YeastToolkit"            
 strains_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/strains"
+strains_db_path = r'C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\yeast_engineering\strains\JPC_Strains.xlsx'
+substrates_index_path = r'C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\Substrates_Index.csv'
 
 class Patterns(object):
 
@@ -92,6 +98,12 @@ class Patterns(object):
         self.measurement_roi = self.get_measurement_roi_zip()
         self.crop_roi = self.get_crop_roi_zip()
         self.bud_roi_df_file = self.get_bud_roi_df_file()
+        self.tet_concn = self.get_tet_concn()
+        self.estradiol_concn = self.get_estradiol_concn()
+        self.genotype = self.get_genotype()
+        self.culture_condition = self.get_culture_condition()
+        self.timepoint_mins = self.get_timepoint_mins()
+        self.clone_number = self.get_clone_number()
 
     def get_master_index_filename(self):
         """
@@ -111,7 +123,7 @@ class Patterns(object):
         centuries = '|'.join([str(num) for num in range(19, 22)])
         decades_years = '|'.join([str(num).zfill(2) for num in range(0, 100)])
         months = '|'.join([str(num).zfill(2) for num in range(0, 12)])
-        days = '|'.join([str(num).zfill(2) for num in range(0, 31)])
+        days = '|'.join([str(num).zfill(2) for num in range(0, 32)])
 
         pattern = f"({centuries})({decades_years})({months})({days})"
         return pattern
@@ -132,6 +144,73 @@ class Patterns(object):
         """
         indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
         pattern = f'(BLS|JPC)({indices})'
+        return pattern
+
+    def get_tet_concn(self):
+        """
+        Return the pattern used for naming data that
+        has been treated with tetracycline typically
+        to inhibit translation of proteasome substrates
+
+        e.g. '250uM-Tet'
+        """
+        numbers = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f"({numbers})(uM-Tet)"
+        return pattern
+
+    def get_genotype(self):
+        """
+        Return a pattern with a collection of typical
+        genetic backgrounds found in experiments
+
+        Should just make a .csv from which to draw these values
+        """
+        genotypes = ['BY4741',
+                     'CMY3465',
+                     'rpn4d',
+                     'ubr2d']
+        genotypes = '|'.join(genotypes)
+        pattern  = f'({genotypes})'
+        return pattern
+
+    def get_estradiol_concn(self):
+        """
+        Return the pattern used for naming data that
+        has been treated with beta-estradiol, typcially
+        to drive expression via pZ4EV
+
+        e.g. '200nM-Estradiol'
+        """
+        numbers = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f"({numbers})(nM-Estradiol)"
+        return pattern
+
+    def get_culture_condition(self):
+        """
+        Continuous OD or left at room temperature.
+        Likely one-off from 20210421 experiment
+        """
+        conditions = '|'.join(['constantOD', 'RT'])
+        pattern = f'({conditions})'
+        return pattern
+
+    def get_timepoint_mins(self):
+        """
+        Pattern for doing timecourse imaging of cells
+        on coverslip
+
+        e.g. "time010"
+        """
+        numbers = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f"(time)({numbers})"
+        return pattern
+
+    def get_clone_number(self):
+        """
+        E.g. 'clone1'
+        """
+        numbers = '|'.join([str(num) for num in range(1,20)])
+        pattern = f"(clone)({numbers})"
         return pattern
 
     def get_crop_roi_df_file(self):

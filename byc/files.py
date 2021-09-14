@@ -1,15 +1,19 @@
+import os
+import re
+import shutil
+import glob
+
 import numpy as np
 import pandas as pd
 import tkinter as tk
 import tkinter.filedialog as tkdia
-import os
-import re
-import shutil
 import ast
 from skimage import io
 from tifffile import imsave
 from skimage.util import img_as_uint
 from read_roi import read_roi_zip
+
+from byc import constants
 
 def select_files(prompt):
     # return a list of files that user selects in the dialogue box
@@ -202,7 +206,134 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
     else:
         print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
 
-def rename_steady_state(tet_treated=False, return_index=False):
+def find_measdirname_features(measdirpath, feature_patterns):
+    """
+    Take a micromanager multi-d acquisition output directory, e.g.
+    "20210421_pJC031_BY4741_constantOD_250uM-Tet_time000_1", find
+    values for different feature categories defined in feature_patterns,
+    and return a dictionary of those feature names and their regex
+    match objects in a dictionary
+    """
+    measdirname = os.path.basename(os.path.dirname(measdirpath))
+    matches_dict = {}
+    sampledf = pd.DataFrame({'sample': measdirname}, index=[0])
+    for key, val in feature_patterns.items():
+        feature_match = re.search(val, measdirname)
+        if feature_match:
+            matches_dict[key] = feature_match
+    # Add filename information
+    matches_dict['path'] = measdirpath.replace(measdirname, '')
+    matches_dict['measdirname'] = measdirname
+    # Add default information about which channels were collected
+    matches_dict['fluor_channel_names'] = ' '.join(constants.default_fluor_channels)
+    matches_dict['channel_names'] = ' '.join(constants.default_channel_names)
+    matches_dict['raw_channel_names'] = ' '.join(constants.default_raw_channel_names)
+    # print(measdirpath)
+    # print(matches_dict)
+    return matches_dict
+
+def measdf_from_features_dict(features_dict):
+    """
+    Iterate through each regex match object in the features
+    dict, if the feature needs to be quantified, extract the 
+    number. If not, extract only the match.group(). Then put
+    these feature names and values into a single row dataframe
+    for the measurement
+    
+    Return the dataframe
+    """
+
+    for key, val in features_dict.items():
+        group0_vars = ['tet_concn',
+                       'estradiol_concn']
+        group1_vars = ['minutes',
+                       'clone_number']
+        # Some information annotated in find_measdirname_features
+        # is already a string etc., so only extract groups if
+        # the value in the features_dict is actually an re.Match
+        if type(val) == re.Match:
+            if key in group1_vars:
+                number = val.groups()[1]
+                features_dict[key] = np.float(number)
+            elif key in group0_vars:
+                number = val.groups()[0]
+                features_dict[key] = np.float(number)
+            else:
+                value = val.group()
+                features_dict[key] = value
+
+    measdf = pd.DataFrame(features_dict, index=[0])
+    print(measdf)
+    return measdf
+
+def make_ss_mdf(exptname, **kwargs):
+    """
+    Create and save master index made by scanning the directory
+    matching `exptname` in constants.steady_state_data_dir
+    and looking for features in those micromanager output
+    directories defined in featuer_patterns
+    """
+    write_mdf = kwargs.get('write_mdf', True)
+    return_mdf = kwargs.get('return_mdf', True)
+    ssdir = constants.steady_state_data_dir
+    exptdir = os.path.join(ssdir, exptname)
+    datadir = os.path.join(exptdir, 'data')
+    measdirpaths = glob.glob(f"{datadir}/*/")
+    measdirpaths = [p for p in measdirpaths if os.path.isdir(p)]
+    # print(f'Looking for features in the following paths\n{measdirpaths}')
+    patterns = constants.patterns
+
+    feature_patterns = {'expt_date': patterns.date,
+                        'plasmid': patterns.plasmid_name,
+                        'genotype': patterns.genotype,
+                        'tet_concn': patterns.tet_concn,
+                        'estradiol_concn': patterns.estradiol_concn,
+                        'culture_condition': patterns.culture_condition,
+                        'minutes': patterns.timepoint_mins,
+                        'clone_number': patterns.clone_number}
+
+    # Make indivudal rows of the master index (each row a different measurement)
+    measdfs = []
+    for measdirpath in measdirpaths:
+        features_dict = find_measdirname_features(measdirpath, feature_patterns)
+        measdf = measdf_from_features_dict(features_dict)
+        measdfs.append(measdf)
+    # Create the master index
+    mdf = pd.concat(measdfs, ignore_index=True)
+    
+    if write_mdf:
+        filename = f'{mdf.expt_date.iloc[0]}_master_index.csv'
+        writepath = os.path.join(exptdir, filename)
+        mdf.to_csv(writepath, index=False)
+        print(f'Saved master index at \n{writepath}')
+    if return_mdf:
+        return mdf
+
+def rename_steady_state(master_index_df=None, **kwargs):
+    """
+    Ask the user to choose a master_index for their steady
+    state experiment. Then rename files tifs based
+    on that master index
+    """
+    if pd.DataFrame(master_index_df).empty == True:
+        master_index_df = pd.read_csv(select_file("Choose master index .csv"))
+    
+    exptdir = master_index_df.path.iloc[0]
+    conditions = os.listdir(exptdir)
+    
+    for condition_index in master_index_df.index:
+        row = master_index_df.loc[condition_index, :]
+        channel_dict = dict(zip(row.channel_names.split(), row.raw_channel_names.split()))
+        conditionpath = os.path.join(row.path, row.measdirname)
+        fov_paths = find_fov_paths(conditionpath)
+        base_filename = row.measdirname.replace('_1', '')
+        if fov_paths != None:
+            for fov_path in fov_paths:
+                rename_channels(fov_path, channel_dict, base_filename, exptdir)
+        else:
+            print(f"No FOV directories found at conditionpath {conditionpath}")
+
+def rename_steady_state_legacy(tet_treated=False, estradiol_treated=False, return_index=False):
     """
     Ask the user to choose a master_index for their steady
     state experiment. Then rename files tifs based
@@ -234,6 +365,9 @@ def rename_steady_state(tet_treated=False, return_index=False):
         if tet_treated:
             tet_concn = str(row.tet_concn).zfill(3) + 'uM-Tet'
             descriptor_list.append(tet_concn)
+        if estradiol_treated:
+            estradiol_concn = str(row.estradiol_concn).zfill(3) + 'nM-Estradiol'
+            descriptor_list.append(estradiol_concn)
         # Check if there's a directory that matches the 
         # descriptors provided for this condition in 
         # the master index
@@ -255,61 +389,6 @@ def rename_steady_state(tet_treated=False, return_index=False):
                 rename_channels(fov_path, channel_dict, base_filename, exptdir)
         else:
             print(f"No FOV directories found at conditionpath {conditionpath}")
-            
-def rename_steady_state_legacy(max_n_fovs):
-    """
-    This verision of rename_steady_state() works with data
-    collected on or before 20200312
-    """
-
-    master_index_df = pd.read_csv(select_file("Choose master index for this experiment"))
-    fovs_list = range(1, max_n_fovs+1)
-
-    for measurement_index in master_index_df.index:
-
-        info = master_index_df.loc[measurement_index, :]
-        source_dir = info.path
-        base_filename = f'{info.expt_date}_{info.plasmid}_{info.genotype}_C{info.clone}'
-        print(f'Evaluating data for measurement {base_filename}')
-        base_path = f'{source_dir}\\{base_filename}'
-
-        channel_dict = dict(zip(info.channel_names.split(), info.raw_channel_names.split()))
-
-        for fov in fovs_list:
-            try:
-                fov_path = f'{base_path}_{fov}\\Pos0'
-                fov_channel_filenames = os.listdir(fov_path)
-                print(f'Found a directory for {base_filename}_00{fov}')
-
-                found_channels = []
-                for fov_channel_filename in fov_channel_filenames:
-
-                    for key in channel_dict.keys():
-                        
-                        if channel_dict[key] in fov_channel_filename:
-
-                            print(f'Matching {fov_channel_filename} to {key}')
-                            src = f'{fov_path}\\{fov_channel_filename}'
-                            dst = f'{source_dir}\\{base_filename}_00{fov}_{key}.tif'
-                            os.rename(src, dst)
-
-                            found_channels.append(key)
-                            
-                        else:
-                            pass
-
-                # Loop to check if we found a file for every channel dictated in the master_index
-                if len(found_channels) == len(channel_dict):
-                    pass
-                else:
-                    print(f"Couldn't find a file for every channel. Only found files for the following: {found_channels}")
-
-
-
-            except:
-                print(f'No fov {fov} for {base_filename}')
-                print(f'Attempted target path: {fov_path}')
-                pass
             
 
 def set_xy_dir_names(expt_dir, expt_name, **kwargs):

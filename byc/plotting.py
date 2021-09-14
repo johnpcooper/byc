@@ -23,6 +23,8 @@ def set_styles(plt, matplotlib):
         plt.style.use('default')        
         for param, value in plt_params_dict.items():
             matplotlib.rcParams[param] = value
+            params = {'mathtext.default': 'regular' }          
+            plt.rcParams.update(params)
     except:
         print("""
             Before running set_styles(), you must:

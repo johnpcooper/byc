@@ -55,7 +55,7 @@ class Experiments(object):
             
         return paths_dict
     
-    def master_idx_by_date(self, exptdate):
+    def master_idx_by_date(self, exptdate, timelapse=False):
         """
         Create a master_index using information found
         in the exptdir
@@ -63,13 +63,17 @@ class Experiments(object):
         path = self.paths_dict[exptdate]
         datadir = os.path.join(os.path.dirname(path), 'data')
         os.path.exists(datadir)
-        fns = os.listdir(datadir)
+        if not timelapse:
+            fns = os.listdir(datadir)
+        else:
+            dirs = os.listdir(datadir)
         # Create a master idx dataframe based on the files found
         # in this experiments datadir
         strains = []
         filepaths = []
 
         for fn in fns:
+            print(fn)
             if fn[-4:] == '.fcs':
                 match = re.search(constants.patterns.strain_name, fn)
                 if match:
@@ -113,7 +117,7 @@ class Experiments(object):
         sampledfs = []
         # Read in data and add identifying information
         # based on master index
-        print(f'Found master index with {len(master_idx)} samples at')
+        print(f'Found master index with {len(master_idx)}')
         for idx in master_idx.index:
             row = master_idx.loc[idx, :]
             print(f'Looking for data at {row.filepath}')
@@ -136,3 +140,103 @@ class Experiments(object):
             print(f'No data found for exptdate {exptdate}')
 
         return exptdf
+
+def label_from_mdf(mdfpath, alldf):
+    mdf = pd.read_csv(mdfpath)
+    # Add data labels to alldf based on the master index    
+    mdf.set_index('sample_id', inplace=True)
+    for col in mdf.columns:
+        alldf.loc[:, col] = np.nan
+
+    for sample_id in alldf.sample_id.unique():
+        print(sample_id)
+        if sample_id in list(mdf.index):
+            print('Found entry in master index')
+            # Add information from master index to
+            # raw flow data
+            for col in mdf.columns:
+                alldf.loc[alldf.sample_id==sample_id, col] = mdf.loc[sample_id, col]
+        else:
+            print(f'sample_id {sample_id} not found in master index')
+            print(f'sample_ids in master index:\n{mdf.index}')
+    mdf.reset_index(inplace=True)
+    return alldf
+
+def label_from_substrate_index(alldf, substrate):
+    
+    substrates_index = pd.read_csv(constants.substrates_index_path)
+    substrates_index.set_index('Substrate', inplace=True)
+
+    for expr_method in substrates_index.columns:
+        plasmid_number = substrates_index.loc[substrate, expr_method]
+        if pd.notna(plasmid_number):
+            plasmid = f'pJC{str(int(plasmid_number)).zfill(3)}'
+            print(f'Found plasmid {plasmid}')
+            if plasmid in alldf.plasmid.unique():
+                print(f'Found {plasmid} in data')
+                alldf.loc[alldf.plasmid==plasmid, 'substrate'] = substrate
+                alldf.loc[alldf.plasmid==plasmid, 'expr_method'] = expr_method.replace('_URA_int', '')
+            else:
+                print(f'No data found for {plasmid}')
+    substrates_index.reset_index(inplace=True)
+    return alldf
+
+def label_alldf(mdf, alldf, label_from_mdf_=True):
+
+    substrates_index = pd.read_csv(constants.substrates_index_path)
+    if label_from_mdf_:
+        alldf = label_from_mdf(mdf, alldf)
+    alldf.loc[:, 'substrate'] = np.nan
+    alldf.loc[:, 'expr_method'] = np.nan
+    for substrate in substrates_index.Substrate:
+        alldf = label_from_substrate_index(alldf, substrate)
+    
+    return alldf
+
+def background_subtract(alldf, **kwargs):
+    """
+    For each sample in the alldf, find its corresponding no-plasmid
+    background sample and subtract that background sample's median
+    fluorescence for each channel name in <channels>
+    
+    Return the alldf with background subtracted
+    
+    Chase method is necessary because of high background caused by 
+    small molecules like tetracyline in DMSO or higher autofluorescence
+    caused by integrated fluorescence across a larger cell size
+    """
+    classifier_list = ['background',
+                      'Chase_method']
+    classifers = kwargs.get('classifiers', classifier_list)
+    channels_list = ['Alexa Fluor 488-A',
+                'DsRed-A']
+    channels = kwargs.get('channels', channels_list)
+    # Filter out data that isn't properly labeled (i.e. from
+    # plate wells that were collected but didn't actually contain
+    # sample)
+    for c in classifers:
+        alldf = alldf[alldf[c].isna()==False]
+    # All unique combinations of classifiers to use to
+    # match samples to their background control
+    no_plasmid_df = alldf.set_index(['plasmid']).loc['no-plasmid', :].reset_index()
+    unique_sets = alldf.set_index(classifers).index.unique()
+    print(f'Found unique sets of classfiers: {unique_sets}')
+    # Set index to classifers columsn to make it quicker to
+    # select data matching each background sample
+    alldf.set_index(classifers, inplace=True)
+    for channel in channels:
+        newcolname = f'{channel}_bg_sub'
+        normcolname = f'{channel}_bg_norm'
+        alldf.loc[:, newcolname] = np.nan
+        for unique_set in unique_sets:        
+            bg_fluor_vals = no_plasmid_df.set_index(classifers).loc[unique_set, channel]
+            bg_fluor_median = bg_fluor_vals.median()        
+            bg_sub_vals = alldf.loc[unique_set, channel] - bg_fluor_median
+            bg_norm_vals = alldf.loc[unique_set, channel]/bg_fluor_median
+            alldf.loc[unique_set, newcolname] = bg_sub_vals
+            alldf.loc[unique_set, normcolname] = bg_norm_vals
+            print(f'Background for {unique_set} {channel} = {bg_fluor_median}')
+
+    alldf.reset_index(inplace=True)
+    
+    return alldf

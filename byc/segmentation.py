@@ -88,7 +88,7 @@ class Cell_Stack(object):
             expt_date = int(master_cells_df.date[abs_i])
             expt_type = master_cells_df.expt_type[abs_i]
             cell_rois_fp = f"{compartment_dir}\\{expt_date}_{expt_type}_cell{str(cell_index).zfill(3)}_crop_rois.zip"
-
+            print(f'Looking for cell rois at {cell_rois_fp}')
             # cell_rois is an OrderedDict so I split the object up and put it in a dataframe 
             # to get relevant data out of it
             cell_rois = read_roi_zip(cell_rois_fp)
@@ -443,7 +443,7 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     """
     # Number of pixels to add to distance at which
     # peak was found
-    peak_dist_offset = kwargs.get('peak_offset', -3)
+    peak_dist_offset = kwargs.get('peak_offset', -4)
     peak_height_threshold = kwargs.get('peak_height_threshold', 100)
     medfilt_kern_size = kwargs.get('medfilt_kern_size', 7)
     df = polar_intensity_df

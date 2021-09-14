@@ -115,8 +115,9 @@ class DataBase():
         try:
             expt_df = self.trace_database_df[self.trace_database_df.expt_name == expt_name]
             traces_list = [pd.read_csv(os.path.join(constants.byc_data_dir, path)) for path in expt_df.trace_relpath]
-        except:
+        except Exception as e:
             print(f"Couldn't find trace .csvs for expt {expt_name} in constants.byc_data_dir\nChecking in absolute path")
+            print(e)
             try:
                 traces_list = [pd.read_csv(os.path.abspath(path)) for path in expt_df.trace_path]
             except:
