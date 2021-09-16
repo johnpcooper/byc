@@ -508,6 +508,72 @@ def get_dfs_list():
         print('Selection included non-csvs, no dfs and paths lists constructed')
         return None
 
+def get_byc_compartmentdir(exptname, compartmentname, **kwargs):
+    """
+    Return path to byc experiment compartment directory given
+    <exptname> and <compartmentname>
+    
+    Example:
+    
+    exptname = '20210903_byc'
+    compartmentname = '20210903_JPC096_NLS-YFP-ODC(47)x3_BY4741_old_chase'
+    dir = get_byc_compartmentdir(exptname, compartmentname)
+    """
+    return_exptdir = kwargs.get('return_exptdir', False)
+    exptdir = os.path.join(constants.byc_data_dir, exptname)
+    if os.path.exists(exptdir):
+        pass
+    else:
+        print(f'<exptdir> does not exist, list of existing expt directories below\n')
+        for name in os.listdir(constants.byc_data_dir):
+            if 'byc' in name:
+                print(name)
+        return None
+    compartmentdir = os.path.join(exptdir, compartmentname)
+    if os.path.exists(compartmentdir):
+        pass
+    else:
+        print(f'{compartmentdir} does not exist')
+        for name in os.listdir(exptdir):
+            print(name)
+        return None    
+    
+    if return_exptdir:
+        return exptdir, compartmentdir
+    else:
+        return compartmentdir
 
-
-
+def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
+    """
+    Find all files that match <file_pattern>, typically
+    drawn from the constants.patterns class, and make
+    them into a concatenated DataFrame if they're all .csvs
+    """
+    save_mdf = kwargs.get('save_mdf', True)
+    mdf_type = kwargs.get('mdf_type', 'crop_roi')
+    save_path = f'{compartmentdir}_{mdf_type}.csv'
+    filenames = os.listdir(compartmentdir)
+    df_fns = []
+    for filename in filenames:
+        m = re.search(file_pattern, filename)
+        if m:
+            df_fns.append(filename)
+    filepaths = [os.path.join(compartmentdir, fn) for fn in df_fns]
+    bools = ['.csv' == filepath[-4:] for filepath in filepaths]
+    if False in bools:
+        print(f'Found non .csv file type(s) in paths:')
+        print(filepaths)
+        return None
+    else:
+        pass
+    
+    dfs = [pd.read_csv(path) for path in filepaths]
+    try:
+        mdf = pd.concat(dfs, ignore_index=True).sort_values(by='cell_index')
+        if save_mdf:
+            mdf.to_csv(save_path, index=False)
+            print(f'Saved master index df at:\n{save_path}')
+        return mdf
+    except Exception as e:
+        print(f'Could not concatnate .csvs into a single dataframe\nError: {e}')
+        return None
