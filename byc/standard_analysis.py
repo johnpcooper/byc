@@ -276,6 +276,17 @@ def get_bud_hours(celldf, reference='death'):
         print("Returning bud roi frame indices")
         return bud_roi_inds
 
+def annotate_absolute_time(cell_trace_df, mdf, time_delta_mins=10):
+    """
+    Look up the path to the crop rois .zip  in <mdf> using the cell_index
+    found in <cell_trace_df>. Use that crop roi to find the first position
+    of the crop roi and use that first position to set absolute experiment
+    time column for the <cell_trace_df>
+
+    Return the absolute time annotated <cell_trace_df>
+    """
+
+
 def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
 
     mdf.loc[:, 'bud_roi_set_path'] = np.nan
@@ -318,3 +329,25 @@ def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
         return (mdf, pd.concat(bud_dfs, ignore_index=True))
     else:
         return mdf
+
+def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp'):
+    """
+    Normalize <yvar> column in <cell_trace_df> to y value
+    at t0 as define by <chase_frame> value found in 
+    <cell_trace_df>. Uses background substracted yvar
+    where background is minimum yvar value
+    
+    Return <cell_trace_df> with the new y_norm column
+    """
+    tracedf = cell_trace_df
+    chase_frame = tracedf.chase_frame.iloc[0]
+    tracedf.loc[:, f'{yvar}_bg_sub'] = np.nan
+    tracedf.loc[:, f'{yvar}_bg_sub'] = tracedf[yvar] - tracedf[yvar].min()
+    yt0 = tracedf.loc[chase_frame, f'{yvar}_bg_sub']
+    y_norm = tracedf[f'{yvar}_bg_sub']/yt0
+    yvar_name = yvar[-3:]
+    norm_col_name = f'{yvar_name}_norm'
+    tracedf.loc[:, norm_col_name] = np.nan
+    tracedf.loc[:, norm_col_name] = y_norm
+    
+    return cell_trace_df

@@ -14,6 +14,9 @@ def double_exp(x, a, b, c, d, e):
 def gaussian(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
+def line(x, m, b):
+    return m*x + b
+
 def get_r_squared(y, y_pred):
     """
     Return R-squared as float defined as:
@@ -304,6 +307,11 @@ def fit_df(df, **kwargs):
     will be returned so that in concatenating multiple samples,
     those for whom fitting failed will have np.nan in place of
     fit parameters and predicted values etc.
+
+    Typically this function is used for fitting flow cytometry data
+    where chase start is always t0, rather than byc data where chase
+    start can change expt to expt. Need to add option to change
+    start frame so I can use it for everything
     """
     fit_func = kwargs.get('fit_func', single_exp)
     xvar = kwargs.get('xvar', 'hours')
