@@ -550,8 +550,9 @@ def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
     them into a concatenated DataFrame if they're all .csvs
     """
     save_mdf = kwargs.get('save_mdf', True)
-    mdf_type = kwargs.get('mdf_type', 'crop_roi')
-    save_path = f'{compartmentdir}_{mdf_type}.csv'
+    mdf_type = kwargs.get('mdf_type', 'crop_rois')
+    return_savepath = kwargs.get('return_savepath', True)
+    savepath = f'{compartmentdir}_{mdf_type}.csv'
     filenames = os.listdir(compartmentdir)
     df_fns = []
     for filename in filenames:
@@ -571,9 +572,12 @@ def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
     try:
         mdf = pd.concat(dfs, ignore_index=True).sort_values(by='cell_index')
         if save_mdf:
-            mdf.to_csv(save_path, index=False)
-            print(f'Saved master index df at:\n{save_path}')
-        return mdf
+            mdf.to_csv(savepath, index=False)
+            print(f'Saved master index df at:\n{savepath}')
+        if return_savepath:
+            return (mdf, savepath)
+        else:
+            return mdf
     except Exception as e:
-        print(f'Could not concatnate .csvs into a single dataframe\nError: {e}')
+        print(f'Could not concatanate .csvs into a single dataframe\nError: {e}')
         return None

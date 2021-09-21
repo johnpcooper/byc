@@ -403,6 +403,22 @@ def plot_auto_manual_corr(neighbor_df, cell_index, expt_name):
 
     fig.savefig(f'{filename}.{filetype}')
  
-
-
-
+def plot_survival(survival_fit_dict,
+                  ax,
+                  color,
+                  linestyle,
+                  linewidth,
+                  alpha,
+                  size):
+    
+    x_kmf = survival_fit_dict['x_kmf']
+    y_kmf = survival_fit_dict['y_kmf']
+    x_wbf = survival_fit_dict['x_wbf']
+    y_wbf = [df.iloc[0]for df in survival_fit_dict['y_wbf']]
+    
+    ax.scatter(x_kmf, y_kmf, color='white', edgecolor=color,
+               alpha=alpha, s=size)
+#     ax.plot(x_kmf, y_kmf, color=color,
+#                alpha=alpha, linewidth=linewidth)
+    ax.plot(x_wbf, y_wbf, color=color,
+               alpha=alpha, linestyle=linestyle, linewidth=linewidth)

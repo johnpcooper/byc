@@ -5,6 +5,9 @@ from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
 from inspect import signature
 
+from lifelines import KaplanMeierFitter
+from lifelines import WeibullFitter
+
 def single_exp(x, a, b, c):
     return a * np.exp(-b * x) + c
 
@@ -414,3 +417,43 @@ def fit_experiment(alldf, **kwargs):
     allfitsdf_smooth = pd.concat(sample_smooth_fit_dfs, ignore_index=True)
 
     return allfitsdf, allfitsdf_smooth
+
+def annotate_mdf_censors(mdf):
+
+    for i in mdf.index:
+        end_event_type = mdf.loc[i, 'end_event_type']
+        if end_event_type == 'death':
+            mdf.loc[i, 'rls_observed'] = True
+            mdf.loc[i, 'retention_observed'] = False
+        elif end_event_type == 'escape':
+            mdf.loc[i, 'rls_observed'] = False
+            mdf.loc[i, 'retention_observed'] = True
+        elif end_event_type == 'sen':
+            mdf.loc[i, 'rls_observed'] = False
+            mdf.loc[i, 'retention_observed'] = False
+    
+    return mdf
+
+def survival_fit(table, **kwargs):
+    wbf = WeibullFitter()
+    kmf = KaplanMeierFitter()
+    T_col = kwargs.get('T_col', 'rls')
+    E_col = kwargs.get('E_col', 'observed')
+    T = table[T_col]
+    E = table[E_col]
+
+    kmf.fit(T, event_observed=E)
+    wbf.fit(T, event_observed=E)
+
+    x_kmf = kmf.survival_function_.index
+    y_kmf = kmf.survival_function_.values
+
+    x_wbf = np.arange(0, T.max()+5, 1)
+    y_wbf = [wbf.survival_function_at_times(x) for x in x_wbf]
+    
+    keys = ['y_kmf', 'x_kmf', 'x_wbf', 'y_wbf']
+    data = [y_kmf, x_kmf, x_wbf, y_wbf]
+    
+    fit_dict = dict(zip(keys, data))
+    
+    return fit_dict

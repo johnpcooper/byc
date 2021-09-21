@@ -351,3 +351,41 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp'):
     tracedf.loc[:, norm_col_name] = y_norm
     
     return cell_trace_df
+
+def create_and_annotate_mdf(exptname, compartmentname,
+                            chase_frame, chase_roi_start_frame,
+                            **kwargs):
+    """
+    Look in the compartmentdir found using <exptname> and
+    <compartmentname>, create a master index using the
+    crop_roi_df csvs found in the compartmentdir, then annotate
+    that master index using bud rois found in the compartmentdir
+    """
+    savemdf = kwargs.get('savemdf', True)
+    channels = kwargs.get('channels_collected', 'bf yfp')
+    age_state = kwargs.get('age_state', 'old')
+    abs_chase_frame = chase_frame + chase_roi_start_frame
+    mdf_type = 'crop_rois'
+    file_pattern = constants.patterns.crop_roi_df_file
+    compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
+    print(f'Found compartment directory:\n{compartmentdir}')
+    mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+    mdf.loc[:, 'chase_frame'] = chase_frame
+    mdf.loc[:, 'abs_chase_frame'] = abs_chase_frame
+    mdf.loc[:, 'compartment_name'] = compartmentname
+    mdf.loc[:, 'channels_collected'] = channels
+    mdf.loc[:, 'age_state'] = age_state
+    # Create buds master index using bud roi dfs found
+    # in compartment directory, use them to annotate the
+    # master index created above
+    mdf_type = 'bud_rois'
+    file_pattern = constants.patterns.bud_roi_df_file
+    compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
+    print(f'Found compartment directory:\n{compartmentdir}')
+    bud_mdf = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type, return_savepath=False)
+
+    mdf = annotate_buds(mdf, bud_mdf, abs_chase_frame)
+    if savemdf:
+        mdf.to_csv(savepath)
+        print(f'Saved annotated master index df at:\n{savepath}')
+    return mdf
