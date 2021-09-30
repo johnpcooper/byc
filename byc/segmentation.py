@@ -10,10 +10,11 @@ import pandas as pd
 from skimage.io import imsave, concatenate_images
 from skimage.filters import threshold_otsu
 from skimage import img_as_uint
+import skimage
 from scipy.signal import medfilt, find_peaks
 from read_roi import read_roi_file, read_roi_zip
 
-from byc import constants, utilities
+from byc import constants, utilities, files
 
 class Cell_Stack(object):
     """
@@ -333,6 +334,102 @@ def save_cell_stacks():
                 print(f"Could not save stacks for cell {cell_index}, img dims must agree")
         abs_i += 1
 
+def fill_crop_roi_df(cell_index, mdf, bf_stack=None):
+    """
+    """
+    cell_row = mdf[mdf.cell_index==cell_index]
+    # Read in various files
+    rois_path = cell_row.crop_rois_path.iloc[0]
+    bf_stack_path = cell_row.bf_stack_path.iloc[0]
+    if bf_stack is None:
+        bf_stack = skimage.io.imread(bf_stack_path)
+    rois_df = files.read_rectangular_rois_as_df(rois_path)
+    rois_df.loc[:, 'frame'] = rois_df.position - 1
+    first_frame = rois_df.frame.min()
+    final_frame = rois_df.frame.max()
+
+    recent_frame = first_frame
+    filled_rois_df = pd.DataFrame()
+
+    stack_frames = range(first_frame, final_frame+1)
+
+    i=0
+    for frame in stack_frames:
+        if frame in list(rois_df.frame):
+            recent_frame = frame
+            for col in rois_df.columns:
+                filled_rois_df.loc[i, col] = rois_df.loc[rois_df.frame==frame, col].iloc[0]
+        else:
+            for col in rois_df.columns:
+                filled_rois_df.loc[i, col] = rois_df.loc[rois_df.frame==recent_frame, col].iloc[0]
+        # Change position and frame from parent values to actualy
+        # values
+        filled_rois_df.loc[i, 'frame'] = frame
+        filled_rois_df.loc[i, 'position'] = frame + 1
+        i += 1
+
+    # Get center of crop roi and add it to the filled roi df
+    x_center = filled_rois_df.left + filled_rois_df.width/2
+    y_center = filled_rois_df.top + filled_rois_df.height/2
+    filled_rois_df.loc[:, 'x_center'] = x_center
+    filled_rois_df.loc[:, 'y_center'] = y_center
+    filled_rois_df.loc[:, 'bf_stack_path'] = bf_stack_path
+    filled_rois_df.loc[:, 'frame_rel'] = filled_rois_df.frame - first_frame
+    # Add all information from this cell's entry in the
+    # master index dataframe 
+    for col in cell_row.columns:
+        filled_rois_df.loc[:, col] = cell_row[col].iloc[0]
+    
+    return filled_rois_df
+
+def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
+    """
+    Return cropped_frames, cellroidf where cropped_frames is cropped
+    using center coordinates found in cellroidf, and cellroidf has
+    been annotated with new x and y center coordinates (x_center_rel,
+    y_center_rel) relative to their newly cropped frame
+    """
+    y_buffer = kwargs.get('y_buffer', 20)
+    x_buffer = kwargs.get('x_buffer', 50)
+    timestamp = kwargs.get('timestamp', False)
+    framestamp = kwargs.get('framestamp', False)
+
+    cellroidf.loc[:, 'x_center_rel'] = np.nan
+    cellroidf.loc[:, 'y_center_rel'] = np.nan
+    # Read in the brightfield stack this cell was cropped
+    # from if no source stack provided during function call
+    if source_stack is None:
+        source_stack_path = cellroidf.bf_stack_path.iloc[0]
+        source_stack = skimage.io.imread(source_stack_path)
+    cropped_frames = []
+    for frame_idx in cellroidf.frame:
+        frame = source_stack[int(frame_idx)]
+        # 
+        x_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'x_center'])
+        y_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'y_center'])
+        x_upper = x_center + x_buffer
+        x_lower = x_center - x_buffer
+        y_upper = y_center + y_buffer
+        y_lower = y_center - y_buffer
+        # Annotate relative center x and y base on limits
+        # defined above
+        cellroidf.loc[cellroidf.frame==frame_idx, 'x_center_rel'] = x_center - x_lower
+        cellroidf.loc[cellroidf.frame==frame_idx, 'y_center_rel'] = y_center - y_lower
+        # Make iure the crop boundaries aren't outside of the 
+        # bounds of the frame
+        if x_lower < 0:
+            x_lower = 0
+        if y_lower < 0:
+            y_lower = 0
+        if x_upper > frame.shape[1]:
+            x_upper = frame.shape[1]
+        if y_upper > frame.shape[0]:
+            y_upper = frame.shape[1]
+        cropped_frame = frame[y_lower:y_upper, x_lower:x_upper]
+        cropped_frames.append(cropped_frame)
+
+    return cropped_frames, cellroidf
+
 
 def radial_avg_intensity(img, x_center, y_center, **kwargs):
     """
@@ -341,6 +438,7 @@ def radial_avg_intensity(img, x_center, y_center, **kwargs):
     center coordinates and intensity is average intensity
     in rings of each of those distances away from center
     """
+    # Bin size is in pixels
     bin_size = kwargs.get('bin_size', 1)
     # Get image parameters
     a = img.shape[0]

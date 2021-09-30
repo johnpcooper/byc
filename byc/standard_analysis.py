@@ -293,10 +293,15 @@ def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
     mdf.loc[:, 'rls'] = np.nan
     mdf.loc[:, 'dist_from_sen'] = np.nan
     mdf.loc[:, 'age_at_chase'] = np.nan
+    mdf.loc[:, 'first_crop_frame'] = np.nan
     bud_dfs = []
     for idx in buds_mdf.index:
         bud_roi_set_path = buds_mdf.bud_roi_set_path[idx]
         cell_index = buds_mdf.cell_index[idx]
+        # Just in case the master index df has a different
+        # cell index order
+        crop_roi_set_relpath = mdf[mdf.cell_index==cell_index].crop_roi_set_relpath.iloc[0]
+        crop_roi_set_path = os.path.join(constants.byc_data_dir, crop_roi_set_relpath)
         # Need to define death offset because if death was observed, the last
         # annotated 'bud' frame is actually the last frame before death, not
         # a budding event
@@ -308,9 +313,10 @@ def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
             print(f'Death not observed for cell {idx}')
         elif buds_mdf.loc[idx, 'end_event_type'] == 'escape':
             death_offset = 0
-        if os.path.exists(bud_roi_set_path):
+        if os.path.exists(bud_roi_set_path) and os.path.exists(crop_roi_set_path):
             mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
             bud_roi_df = files.read_rectangular_rois_as_df(bud_roi_set_path)
+            crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
             bud_roi_df.loc[:, 'frame'] = bud_roi_df.position - 1
             age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=abs_chase_frame, :])
             dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>abs_chase_frame, :]) - death_offset
@@ -321,10 +327,15 @@ def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
             mdf.loc[idx, 'rls'] = rls
             mdf.loc[idx, 'dist_from_sen'] = dist_from_sen
             mdf.loc[idx, 'age_at_chase'] = age_at_chase
-            first_roi_pos = bud_roi_df.loc[0, 'position']
-            mdf.loc[idx, 'first_bud_frame'] = first_roi_pos - 1
+            first_bud_roi_pos = bud_roi_df.loc[0, 'position']
+            first_crop_roi_pos = crop_roi_df.loc[0, 'position']
+            mdf.loc[idx, 'first_bud_frame'] = first_bud_roi_pos - 1
+            mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_pos - 1
             bud_roi_df.loc[:, 'cell_index'] = cell_index
             bud_dfs.append(bud_roi_df)
+        else:
+            print(f'No bud roi set found at:\n{bud_roi_set_path}')
+            print(f'No crop roi set found at:\n{crop_roi_set_path}')
     if return_bud_roi_df:
         return (mdf, pd.concat(bud_dfs, ignore_index=True))
     else:
@@ -389,3 +400,22 @@ def create_and_annotate_mdf(exptname, compartmentname,
         mdf.to_csv(savepath)
         print(f'Saved annotated master index df at:\n{savepath}')
     return mdf
+
+def filter_low_dynamic_range_cells(trace_dfs, threshold, **kwargs):
+    yvar = kwargs.get('yvar', 'Mean_yfp')
+    filtered_trace_dfs = []
+    for tracedf in trace_dfs:
+        chase_frame = tracedf.chase_frame.unique()[0]
+        ymin = tracedf[yvar].min()
+        yt0 = tracedf.loc[chase_frame, yvar]
+
+        delta_y = yt0 - ymin
+        print(f'Range from {yt0} to {ymin}')
+        print(delta_y)
+        if delta_y < threshold:
+            print('Cell thrown out')
+        else:
+            filtered_trace_dfs.append(tracedf)
+
+    print(f'Kept {len(filtered_trace_dfs)} of {len(trace_dfs)}')
+    return filtered_trace_dfs

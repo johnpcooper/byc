@@ -581,3 +581,88 @@ def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
     except Exception as e:
         print(f'Could not concatanate .csvs into a single dataframe\nError: {e}')
         return None
+
+def measurement_rois_path_from_crop_rois_path(cell_crop_rois_path, xy, channels):
+    """
+    Find and replace in the cell_crop_rois_path to define a path
+    to the cell's measurement roi .zip file
+    
+    Return the path if exactly one is found, if more than one is 
+    found return the last one found
+    """
+    measpath = None
+    measpathtemp = cell_crop_rois_path.replace('byc_cell', f'byc_xy{str(xy).zfill(2)}_cell')
+    measpathtemp = measpathtemp.replace('crop_rois', 'measurement_rois')
+
+    for channel in channels:
+        oldstr = '_measurement_rois'
+        newstr = f'_{channel}_stack_measurement_rois'
+        measpath = measpathtemp.replace(oldstr, newstr)
+        if os.path.exists(measpath):
+            print(f'Found measurement rois at {measpath}')
+            measpath_final = measpath
+        else:
+            pass
+    
+    return measpath_final
+
+def path_annotate_master_index_df(mdf):
+    """
+    For each cell in the master index, add a absolute paths
+    to the cell's crop rois set, bud rois set, source channel
+    stack tifs, and measurement roi sets (cell outlines annotated
+    on individual cell stacks)
+    """
+    channels = str(mdf.channels_collected.iloc[0]).split()
+    col_names = ['crop_rois_path',
+                 'bud_rois_path',
+                 'outline_rois_path']
+    for channel in channels:
+        col_names.append(f'{channel}_stack_path')
+        
+    # Create nan columns that will be filled with individual cell
+    # information below
+    for col_name in col_names:
+        mdf.loc[:, col_name] = np.nan
+    
+    for cell_index in mdf.cell_index.unique():
+        # Get paths to the cell's crop roi set, bud roi set,
+        # and image used to annotate the crop roi
+        cell_row = mdf.loc[mdf.cell_index==cell_index, :]
+
+        crop_rois_relpath = cell_row.crop_roi_set_relpath.iloc[0]
+        cell_crop_rois_path = os.path.join(constants.byc_data_dir, crop_rois_relpath)
+
+        cell_bud_rois_path = cell_crop_rois_path.replace('crop_rois.zip', 'bud_rois.zip')
+
+        xy = cell_row.xy.iloc[0]
+        date = cell_row.date.iloc[0]
+        expt_type = cell_row.expt_type.iloc[0]
+        compdir = os.path.join(constants.byc_data_dir, cell_row.compartment_reldir.iloc[0])
+        stacks_dict = {}
+        
+        print(f'Collecting paths to stacks for following channels:{channels}')
+        for channel in channels: 
+            channel_stack_filename = f'{date}_{expt_type}_xy{str(xy).zfill(2)}_{channel}_stack.tif'
+            channel_stack_filepath = os.path.join(compdir, channel_stack_filename)
+            stacks_dict[channel] = channel_stack_filepath
+        # Get the path to the cell's measurement roi set
+        args = [cell_crop_rois_path,
+                xy,
+                channels]
+        outline_rois_path = measurement_rois_path_from_crop_rois_path(*args)
+        # Add information found above to the master index
+        vals = [cell_crop_rois_path,
+                cell_bud_rois_path,
+                outline_rois_path]
+        # Add column name and path to stack tif
+        # for each channel collected. This is specific
+        # to each cell because they can come from different
+        # position (xy) stakcs
+        for key in stacks_dict.keys():
+            vals.append(stacks_dict[key])
+        # Create nan columns for the info to be added
+        for i, col_name in enumerate(col_names):
+            mdf.loc[mdf.cell_index==cell_index, col_name] = vals[i]
+        
+    return mdf    
