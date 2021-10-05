@@ -16,7 +16,7 @@ from byc import constants, utilities, database, files
 # Recently updated bycDataSet so that you instantiate
 # it by giving it a key through which it can find
 # the master index in byc.database.byc_database.master_index_dfs_dict
-class bycDataSet(object):    
+class bycDataSet(object):
     """
     Upon instantiation, ask the user to choose a master index for the experiment
     they want to create trace dataframes for each cell in the master index.
@@ -43,7 +43,6 @@ class bycDataSet(object):
             if self.compartment_name != None:
                 self.master_index_df = database.byc_database.master_index_dfs_dict[self.compartment_name]
                 self.master_index_df = self.clean_master_index_df(self.master_index_df)
-            
 
         # Read in data for each cell in the master index, add proper
         # time column and other annotations from the master index df
@@ -108,7 +107,7 @@ class bycDataSet(object):
                 match = re.search(pattern, filename)
                 # Define path to file and read in as dataframe
                 filepath = os.path.join(dirpath, filename)
-                if match:                    
+                if match:
                     print(f'Found data for cell {index} at {filepath}')
                     df = pd.read_csv(filepath)
                     # Set time data. Absolute hours is hours
@@ -386,6 +385,8 @@ def create_and_annotate_mdf(exptname, compartmentname,
     mdf.loc[:, 'compartment_name'] = compartmentname
     mdf.loc[:, 'channels_collected'] = channels
     mdf.loc[:, 'age_state'] = age_state
+    # Add paths to cell tracking ROIs
+    mdf = files.path_annotate_master_index_df(mdf)
     # Create buds master index using bud roi dfs found
     # in compartment directory, use them to annotate the
     # master index created above
