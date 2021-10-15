@@ -206,106 +206,117 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
     else:
         print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
 
-def find_measdirname_features(measdirpath, feature_patterns):
-    """
-    Take a micromanager multi-d acquisition output directory, e.g.
-    "20210421_pJC031_BY4741_constantOD_250uM-Tet_time000_1", find
-    values for different feature categories defined in feature_patterns,
-    and return a dictionary of those feature names and their regex
-    match objects in a dictionary
-    """
-    measdirname = os.path.basename(os.path.dirname(measdirpath))
-    matches_dict = {}
-    sampledf = pd.DataFrame({'sample': measdirname}, index=[0])
-    for key, val in feature_patterns.items():
-        feature_match = re.search(val, measdirname)
-        if feature_match:
-            matches_dict[key] = feature_match
-    # Add filename information
-    matches_dict['path'] = measdirpath.replace(measdirname, '')
-    matches_dict['measdirname'] = measdirname
-    # Add default information about which channels were collected
-    matches_dict['fluor_channel_names'] = ' '.join(constants.default_fluor_channels)
-    matches_dict['channel_names'] = ' '.join(constants.default_channel_names)
-    matches_dict['raw_channel_names'] = ' '.join(constants.default_raw_channel_names)
-    # print(measdirpath)
-    # print(matches_dict)
-    return matches_dict
 
-def measdf_from_features_dict(features_dict):
+def get_channel_names(sampledir):
     """
-    Iterate through each regex match object in the features
-    dict, if the feature needs to be quantified, extract the 
-    number. If not, extract only the match.group(). Then put
-    these feature names and values into a single row dataframe
-    for the measurement
-    
-    Return the dataframe
+    Return three strings joined on a space from three lists:
+    fluor_channel_names, channel_names, raw_channel_names
     """
-
-    for key, val in features_dict.items():
-        group0_vars = ['tet_concn',
-                       'estradiol_concn']
-        group1_vars = ['minutes',
-                       'clone_number']
-        # Some information annotated in find_measdirname_features
-        # is already a string etc., so only extract groups if
-        # the value in the features_dict is actually an re.Match
-        if type(val) == re.Match:
-            if key in group1_vars:
-                number = val.groups()[1]
-                features_dict[key] = np.float(number)
-            elif key in group0_vars:
-                number = val.groups()[0]
-                features_dict[key] = np.float(number)
-            else:
-                value = val.group()
-                features_dict[key] = value
-
-    measdf = pd.DataFrame(features_dict, index=[0])
-    print(measdf)
-    return measdf
+    metadict = get_byc_display_and_comments_dict(sampledir)
+    namesdict = {'Brightfield': 'bf',
+                 'YFP': 'yfp',
+                 'RFP': 'rfp',
+                 'GFP': 'gfp'}
+    fluor_channel_names = []
+    channel_names = []
+    raw_channel_names = []
+    channeldictslist = metadict['Channels']
+    for channeldict in channeldictslist:
+        raw_name = channeldict['Name']
+        name = namesdict[raw_name]
+        raw_channel_names.append(raw_name)
+        channel_names.append(name)
+        if name != 'bf':
+            fluor_channel_names.append(name)
+            
+    return ' '.join(fluor_channel_names), ' '.join(channel_names), ' '.join(raw_channel_names)
 
 def make_ss_mdf(exptname, **kwargs):
     """
     Create and save master index made by scanning the directory
     matching `exptname` in constants.steady_state_data_dir
     and looking for features in those micromanager output
-    directories defined in featuer_patterns
+    directories defined in patterns
     """
-    write_mdf = kwargs.get('write_mdf', True)
     return_mdf = kwargs.get('return_mdf', True)
-    ssdir = constants.steady_state_data_dir
-    exptdir = os.path.join(ssdir, exptname)
-    datadir = os.path.join(exptdir, 'data')
-    measdirpaths = glob.glob(f"{datadir}/*/")
-    measdirpaths = [p for p in measdirpaths if os.path.isdir(p)]
-    # print(f'Looking for features in the following paths\n{measdirpaths}')
-    patterns = constants.patterns
+    save_mdf = kwargs.get('save_mdf', True)
+    exptdir = os.path.join(constants.steady_state_data_dir, exptname)
+    datadir = f'{exptdir}/data'
+    if os.path.exists(datadir):
+        print(f'Found dataset directory at \n{datadir}')
+    else:
+        print(f'No such file exists\n{datadir}')
+        
+    samplenames = os.listdir(datadir)
+    # Filter non-directory items
+    sampledirs = [os.path.join(datadir, name) for name in samplenames]
+    sampledirs = [d for d in sampledirs if os.path.isdir(d)]
+    # Extract features from sample names
 
-    feature_patterns = {'expt_date': patterns.date,
-                        'plasmid': patterns.plasmid_name,
-                        'genotype': patterns.genotype,
-                        'tet_concn': patterns.tet_concn,
-                        'estradiol_concn': patterns.estradiol_concn,
-                        'culture_condition': patterns.culture_condition,
-                        'minutes': patterns.timepoint_mins,
-                        'clone_number': patterns.clone_number}
-
-    # Make indivudal rows of the master index (each row a different measurement)
-    measdfs = []
-    for measdirpath in measdirpaths:
-        features_dict = find_measdirname_features(measdirpath, feature_patterns)
-        measdf = measdf_from_features_dict(features_dict)
-        measdfs.append(measdf)
-    # Create the master index
-    mdf = pd.concat(measdfs, ignore_index=True)
-    
-    if write_mdf:
-        filename = f'{mdf.expt_date.iloc[0]}_master_index.csv'
-        writepath = os.path.join(exptdir, filename)
-        mdf.to_csv(writepath, index=False)
-        print(f'Saved master index at \n{writepath}')
+    patterns = [constants.patterns.date,
+                constants.patterns.strain_name,
+                constants.patterns.plasmid_name,
+                constants.patterns.tet_concn,
+                constants.patterns.estradiol_concn,
+                constants.patterns.genotype,
+                constants.patterns.clone_number,
+                constants.patterns.culture_condition,
+                constants.patterns.timepoint_mins]
+    patternkeys = ['date',
+                   'strain',
+                   'plasmid',
+                   'tet_concn',
+                   'estradiol_concn',
+                   'genotype',
+                   'clone',
+                   'culture_condition',
+                   'minutes']
+    channelkeys = ['fluor_channel_names',
+                   'channel_names',
+                   'raw_channel_names']
+    colnames = patternkeys + channelkeys
+    patternsdict = dict(zip(patternkeys, patterns))
+    # Create an empty master index to fill with sample information
+    mdf = pd.DataFrame(index=range(len(sampledirs)), columns=colnames)
+    # Iterate through each unique sample directory, detect features
+    # from filename and add those features to the master index
+    for i, sampledir in enumerate(sampledirs):
+        # Add imaging channels collected to master index
+        fluorchannels, channels, rawchannels = get_channel_names(sampledir)
+        for idx, val in enumerate([fluorchannels, channels, rawchannels]):
+            mdf.loc[i, channelkeys[idx]] = val
+        samplename = os.path.basename(sampledir)
+        matches = []
+        groups = []
+        for key, p in patternsdict.items():
+            match = re.search(p, samplename)
+            matches.append(match)
+            if match is not None:
+                # If we find a clone number, we only want the integer
+                # of that clone, not the whole string
+                if key == 'clone':
+                    group = match.groups()[1]
+                else:
+                    group = match.group()
+            else:
+                # If we're looking for a plasmid_name and none are
+                # found, we check if this is the 'no-plasmid' part
+                # of the experiment and annotate as such
+                if key == 'plasmid' and 'no-plasmid' in samplename:
+                    group = 'no-plasmid'
+                else:
+                    group = np.nan
+            mdf.loc[i, key] = group
+        # Add measurement directory name to master index
+        mdf.loc[i, 'measdirname'] = sampledir
+    # Add path to the data directory for this
+    # entire experiment
+    mdf.loc[:, 'path'] = datadir
+    if save_mdf:
+        m = re.search(constants.patterns.date, exptname)
+        date = m.group()
+        savepath = os.path.join(exptdir, f'{date}_master_index.csv')
+        mdf.to_csv(savepath, index=False)
     if return_mdf:
         return mdf
 
@@ -326,7 +337,11 @@ def rename_steady_state(master_index_df=None, **kwargs):
         channel_dict = dict(zip(row.channel_names.split(), row.raw_channel_names.split()))
         conditionpath = os.path.join(row.path, row.measdirname)
         fov_paths = find_fov_paths(conditionpath)
-        base_filename = row.measdirname.replace('_1', '')
+        # Get rid of "_1" added to end of each sample name
+        # by micro-manager during acquisition
+        base_filename = row.measdirname
+        if base_filename[-2:] == '_1':
+            base_filename = base_filename[0:-2]
         if fov_paths != None:
             for fov_path in fov_paths:
                 rename_channels(fov_path, channel_dict, base_filename, exptdir)
@@ -524,7 +539,7 @@ def get_byc_compartmentdir(exptname, compartmentname, **kwargs):
     if os.path.exists(exptdir):
         pass
     else:
-        print(f'<exptdir> does not exist, list of existing expt directories below\n')
+        print(f'{exptdir}\n does not exist, list of existing expt directories below\n')
         for name in os.listdir(constants.byc_data_dir):
             if 'byc' in name:
                 print(name)
@@ -602,7 +617,7 @@ def measurement_rois_path_from_crop_rois_path(cell_crop_rois_path, xy, channels)
             print(f'Found measurement rois at {measpath}')
             measpath_final = measpath
         else:
-            pass
+            measpath_final = None
     
     return measpath_final
 

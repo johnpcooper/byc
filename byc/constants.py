@@ -29,6 +29,7 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
                   'cell_roi_db_path': os.path.join(package_path, 'cell_roi_database.json')}
 
 byc_data_dir = os.path.join(source_path, 'data\\')
+# byc_data_dir = r"E:\byc_data"
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
 steady_state_data_dir = "C:\\Users\\John Cooper\\Box Sync\\Finkelstein-Matouschek\\images\\"
 steady_state_data_path = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
@@ -134,7 +135,7 @@ class Patterns(object):
         'pJC', 'pYTK', 'BLS', or 'pJBK' + 3 digits
         """
         indices = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
-        pattern = f'(pJC|pYTK|pBLS|pJBK)({indices})'
+        pattern = f'(pJC|pYTK|pBLS|pJBK|pJZ)({indices})'
         return pattern
 
     def get_strain_name(self):

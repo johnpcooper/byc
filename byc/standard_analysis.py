@@ -371,6 +371,10 @@ def create_and_annotate_mdf(exptname, compartmentname,
     crop_roi_df csvs found in the compartmentdir, then annotate
     that master index using bud rois found in the compartmentdir
     """
+    # Allow user to pass an mdf that may have been manually
+    # edited etc.
+    mdf = kwargs.get('mdf', None)
+    savepath =kwargs.get('savepath', None)
     savemdf = kwargs.get('savemdf', True)
     channels = kwargs.get('channels_collected', 'bf yfp')
     age_state = kwargs.get('age_state', 'old')
@@ -379,7 +383,10 @@ def create_and_annotate_mdf(exptname, compartmentname,
     file_pattern = constants.patterns.crop_roi_df_file
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
     print(f'Found compartment directory:\n{compartmentdir}')
-    mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+    if mdf is None:
+        mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+    else:
+        print(f"Using user defined mdf and savepath")
     mdf.loc[:, 'chase_frame'] = chase_frame
     mdf.loc[:, 'abs_chase_frame'] = abs_chase_frame
     mdf.loc[:, 'compartment_name'] = compartmentname

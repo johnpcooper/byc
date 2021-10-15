@@ -1,5 +1,8 @@
+import os
+
 import numpy as np
 import pandas as pd
+import skimage
 # Plotting tools
 import matplotlib
 import matplotlib.pyplot as plt
@@ -10,7 +13,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
 # Stuff from byc
-import byc.files as fm
+from byc import files, constants
 
 plt_params_dict = {'font.sans-serif': 'Arial'}
 
@@ -295,7 +298,7 @@ def plot_cell_peak_detection(cell_df, peak_indices, **kwargs):
     try:
         manual_bud_indices = kwargs.get('manual_bud_indices')
     except:
-        manual_bud_indices = fm.read_roi_position_indices(fm.select_file("Choose manual bud rois .zip"))
+        manual_bud_indices = files.read_roi_position_indices(files.select_file("Choose manual bud rois .zip"))
     collection_interval = kwargs.get('collection_interval', 10)
     death_cutoff_hr = (np.max(manual_bud_indices)*collection_interval)/60
     linewidth = kwargs.get('linewidth', 0.8)
@@ -422,3 +425,85 @@ def plot_survival(survival_fit_dict,
 #                alpha=alpha, linewidth=linewidth)
     ax.plot(x_wbf, y_wbf, color=color,
                alpha=alpha, linestyle=linestyle, linewidth=linewidth)
+
+
+def plot_radial_avg_intensity_peaks(cell_index, crop_rois_df, stacksdict,
+                                    **kwargs):
+
+    savefig = kwargs.get('savefig', True)
+    dpi = kwargs.get('dpi', 100)
+    ylim = kwargs.get('ylim', (1500, 2500))
+    
+    celldf = crop_rois_df[crop_rois_df.cell_index==cell_index]
+    cellstack = stacksdict[str(int(cell_index))]
+    save_paths = []
+    for frame_idx in celldf.frame_rel:
+        cellframedf = celldf[celldf.frame_rel==frame_idx]
+        peak_radius = cellframedf.peak_avg_intensity_radius.iloc[0]
+        frame_idx = int(frame_idx)
+        mpl = matplotlib
+        max_distance = 30
+        # Adjust plot parameters
+        mpl.rcParams['font.family'] = 'Arial'
+        mpl.rcParams['font.size'] = 16
+        mpl.rcParams['axes.linewidth'] = 2
+        mpl.rcParams['axes.spines.top'] = False
+        mpl.rcParams['axes.spines.right'] = False
+        mpl.rcParams['xtick.major.size'] = 7
+        mpl.rcParams['xtick.major.width'] = 2
+        mpl.rcParams['ytick.major.size'] = 7
+        mpl.rcParams['ytick.major.width'] = 2
+        # Create figure and add subplot
+        fig = plt.figure(figsize=(5, 5))
+        fig.set_dpi(dpi)
+        ax = fig.add_subplot(211)
+        # Plot data
+        rad = cellframedf.circle_slice_radius.iloc[0].split('|')
+        rad = np.array([float(r) for r in rad])
+        intensity = cellframedf.intensity_avg.iloc[0].split('|')
+        intensity = np.array([float(inte) for inte in intensity])
+        ax.plot(rad, intensity, linewidth=2, color='red')
+        # Edit axis labels
+        ax.set_xlabel('Radial Distance (pixels)', labelpad=10)
+        ax.set_ylabel('Average Intensity (AU)', labelpad=10)
+        ax.set_xlim(0, max_distance)
+        ax.set_ylim(ylim)
+        ax.set_title(f'Cell {cell_index}, frame {frame_idx}')
+        intensity_slice = intensity[0:max_distance+1]
+        intensity_slice = intensity_slice - intensity_slice.min()
+        # peaks[0] is the index at which the peak is found. 
+        # So index + 1 = actual distance
+        ax.axvline(x=peak_radius+1, color='black', linestyle='--')
+        ax = fig.add_subplot(212)
+
+        ax.imshow(cellstack[frame_idx])
+        x_center_rel = celldf.x_center_rel.iloc[frame_idx]
+        y_center_rel = celldf.y_center_rel.iloc[frame_idx]
+        circ = mpl.patches.Circle(xy=(x_center_rel, y_center_rel), radius=peak_radius,
+                                  color='white', fill=False)
+        ax.add_patch(circ)
+        plt.tight_layout()
+
+        if savefig:
+            reldir = celldf.compartment_reldir.iloc[0]
+            exptname = f'{celldf.date.iloc[0]}_{celldf.expt_type.iloc[0]}'
+            save_dir = os.path.join(constants.byc_data_dir, reldir)
+            save_dir = f'{save_dir}_auto'
+            save_dir = os.path.join(save_dir, 'plots')
+            if not os.path.exists(save_dir):
+                os.mkdir(save_dir)
+            filename = f'{exptname}_cell{str(cell_index).zfill(3)}_frame{str(frame_idx).zfill(3)}.tif'
+            save_path = os.path.join(save_dir, filename)
+            fig.savefig(save_path)
+            print(f'Saved figure at\n{save_path}')
+            save_paths.append(save_path)
+            # Close the frame figure so it stops taking up memory
+            plt.close()
+    # Read the individual frames back in and concatanate
+    # them into a stack and save
+    images = [skimage.io.imread(p) for p in save_paths]
+    stack = skimage.io.concatenate_images(images)
+    rdx = save_path.rindex(f'cell{str(cell_index).zfill(3)}')
+    stack_save_path = f'{save_path[0:rdx+7]}_rad_avg_stack.tif'
+    skimage.io.imsave(stack_save_path, stack)
+    print(f'Saved full stack at {stack_save_path}')

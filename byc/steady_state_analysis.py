@@ -8,7 +8,7 @@ import tkinter as tk
 import tkinter.filedialog as tkdia
 from functools import reduce
 
-from byc import constants
+from byc import constants, files
 
 
 def select_files(prompt):

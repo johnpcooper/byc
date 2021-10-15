@@ -383,14 +383,20 @@ def fill_crop_roi_df(cell_index, mdf, dataset, bf_stack=None):
     filled_rois_df.loc[:, 'bf_stack_path'] = bf_stack_path
     filled_rois_df.loc[:, 'frame_rel'] = filled_rois_df.frame - first_frame
     # Add fluorescence and brightfild intensity measurements etc.
-    alldf = pd.concat(dataset.cell_trace_dfs, ignore_index=True)
-    cell_trace_df = alldf[alldf.cell_index==cell_index].reset_index()
-    for col in list(cell_trace_df.columns):
-        # Don't overwrite existing values in the
-        # crop_roi_df
-        if col not in list(filled_rois_df.columns):
-            filled_rois_df.loc[:, col] = np.nan
-            filled_rois_df.loc[:, col] = cell_trace_df.loc[:, col]
+    # if they exist
+    try:
+        alldf = pd.concat(dataset.cell_trace_dfs, ignore_index=True)
+        cell_trace_df = alldf[alldf.cell_index==cell_index].reset_index()
+    except Exception as e:
+        print(f'Could not find measurement dfs. Exception/n{e}')
+        cell_trace_df = None
+    if cell_trace_df is not None:
+        for col in list(cell_trace_df.columns):
+            # Don't overwrite existing values in the
+            # crop_roi_df
+            if col not in list(filled_rois_df.columns):
+                filled_rois_df.loc[:, col] = np.nan
+                filled_rois_df.loc[:, col] = cell_trace_df.loc[:, col]
     # Add all information from this cell's entry in the
     # master index dataframe 
     for col in cell_row.columns:
@@ -578,12 +584,15 @@ def get_cell_crop_stack(cell_roi_df,
     cell_index = cell_roi_df.cell_index.iloc[0]
     crop_rois_path = cell_roi_df.crop_roi_set_path.iloc[0]
     compartment_name = cell_roi_df.compartment_name.iloc[0]
+    exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
+    compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
     auto_compartment_name = f'{compartment_name}_auto'
+    auto_compartment_dir = f'{compartment_dir}_auto'
     crop_rois_path_mod = crop_rois_path.replace(compartment_name, auto_compartment_name)
     # Make a directory in which to save this next gen-generated cell
     # crop stack
-    if not os.path.exists(crop_rois_path_mod):
-        os.mkdir(crop_rois_path_mod)
+    if not os.path.exists(auto_compartment_dir):
+        os.mkdir(auto_compartment_dir)
     stack_path = crop_rois_path_mod.replace('crop_rois.zip', 'crop.tif')
     cellstackarr = np.array(cellstack)
     if save_cell_stacks:
@@ -681,7 +690,8 @@ def radial_avg_intensity(img, x_center, y_center, **kwargs):
         index += 1
     return rad, intensity
 
-def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict):
+def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict,
+                                    peak_idx_to_use=0, offset=0):
     """
     After reading in a <crop_rois_df> and <cellstacksdict> as follows,
     pass them this find_radial_avg_intensity_peaks
@@ -720,7 +730,7 @@ def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict):
 
 
             peaks = find_peaks(intensity, height=np.array([300, None]))
-            peak_radius = peaks[0][0]
+            peak_radius = peaks[0][peak_idx_to_use] - offset
             # Need to condense radius vs. intensity
             # into single row entries.
             joined_rad = '|'.join([str(rad_val) for rad_val in rad])
@@ -770,6 +780,8 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     # Initialize dataframe to be filled with intensities
     # as a function of (theta_bin, radial_distance_bin)
     df = pd.DataFrame(index=np.arange(0, len(thetas)*len(dists), 1))
+    df.loc[:, 'min_theta'] = np.nan
+    df.loc[:, 'max_theta'] = np.nan
     for i, t in enumerate(thetas):
         df.loc[i*len(dists):i*len(dists) + len(dists), 'theta'] = t
         for dist_i, dist in enumerate(dists):
@@ -780,14 +792,19 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     for index in df.index:
         t = df.loc[index, 'theta']
         dist = df.loc[index, 'radial_distance']
+        min_theta = t - theta_bin_size
+        max_theta = t + theta_bin_size
         # print(f'Looking for pixels at {t} radians, {dist} pixels')
-        theta_mask = (np.greater(theta, t - theta_bin_size) & np.less(theta, t + theta_bin_size))
+        theta_mask = (np.greater(theta, min_theta) & np.less(theta, max_theta))
         dist_mask = (np.greater(R, dist - dist_bin_size) & np.less(R, dist + dist_bin_size))
         values = img[(theta_mask & dist_mask)]
         df.loc[index, 'intensity'] = np.mean(values)
-
-    df.loc[:, 'x_center'] = x_center
-    df.loc[:, 'y_center'] = y_center
+        df.loc[index, 'min_theta'] = min_theta
+        df.loc[index, 'max_theta'] = max_theta
+    # Set x and y center coordinates relative to the cropped cell stack
+    # rather than absolute x, y withing source xy FOV stack
+    df.loc[:, 'x_center_rel'] = x_center
+    df.loc[:, 'y_center_rel'] = y_center
 
     return df
 
@@ -809,8 +826,8 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     df = polar_intensity_df
     df.loc[:, 'peak_X'] = np.nan
     df.loc[:, 'peak_Y'] = np.nan
-    x_center = df.x_center.iloc[0]
-    y_center = df.y_center.iloc[0]
+    x_center = df.x_center_rel.iloc[0]
+    y_center = df.y_center_rel.iloc[0]
 
     for t in df.theta.unique():
         intensity = df.loc[df.theta == t, 'intensity']
@@ -822,13 +839,98 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
             highest_peak_index = np.argmax(peaks[1]['peak_heights'])
             highest_peak_dist = peaks[0][highest_peak_index] + 1
             first_peak = peaks[0][0] + 1
-            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist + peak_dist_offset
+            highest_peak_dist_adj = highest_peak_dist + peak_dist_offset
+            if highest_peak_dist_adj <= 0:
+                highest_peak_dist_adj = 1
+            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj
+
             df.loc[df.theta==t, 'first_peak_dist'] = first_peak
             # Add cartesian coordinates for max amplitude peak found
-
-            df.loc[df.theta==t, 'peak_X'] = highest_peak_dist*np.cos(t) + x_center
-            df.loc[df.theta==t, 'peak_Y'] = highest_peak_dist*np.sin(t) + y_center
+            df.loc[df.theta==t, 'peak_X'] = highest_peak_dist_adj*np.cos(t) + x_center
+            df.loc[df.theta==t, 'peak_Y'] = highest_peak_dist_adj*np.sin(t) + y_center
         else:
             print(f'No peaks found at {t} radians')
 
     return df
+
+def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
+    cellstack = stacksdict[str(cell_index)]
+    cell_bool = crop_rois_df.cell_index==cell_index
+    celldf = crop_rois_df[cell_bool].reset_index()
+    dfs = []
+    print(f'Finding peaks in intensity by radial dist and theta for cell {cell_index}')
+    for frame_idx in celldf.frame_rel:
+        print(f'Frame {frame_idx}')
+        x_center_rel = celldf.x_center_rel.iloc[0]
+        y_center_rel = celldf.y_center_rel.iloc[0]
+        x_center = celldf[celldf.frame_rel==frame_idx].x_center.iloc[0]
+        y_center = celldf[celldf.frame_rel==frame_idx].y_center.iloc[0]
+        img = cellstack[int(frame_idx)]
+        # Measure intensity along traces radiating from
+        # center averaged over bins of theta angular width
+        df = intensity_by_distance_and_theta(img,
+                                             x_center_rel,
+                                             y_center_rel)
+        # For each theta bin, find radius distance coordinate
+        # for highest magnitude intensity peak
+        df = polar_intensity_peaks(df)
+        df.loc[:, 'frame_rel'] = frame_idx
+        df.loc[:, 'frame'] = celldf[celldf.frame_rel==frame_idx].frame.iloc[0]
+        df.loc[:, 'x_center'] = x_center
+        df.loc[:, 'y_center'] = y_center
+        # Add all information from celldf crop
+        # roi if not already in the intensity vs.
+        # distance and theta df. Each unique entry in 
+        # the crop_roi_df at this point is a different
+        # frame. Now we're adding polar coordinates for each
+        # pixel (and pixel intensity) per frame 
+        for colname in celldf.columns:
+            if colname not in list(df.columns):
+                df.loc[:, colname] = np.nan
+                val = celldf.loc[frame_idx, colname]
+                df.loc[:, colname] = val
+        dfs.append(df)
+    allframesdf = pd.concat(dfs, ignore_index=True)
+    return allframesdf
+
+def get_frame_cell_mask(allframesdf, measurement_stack, frame_idx):
+    """
+    After creating an <allframesdf> for a single cell crop using
+    something like:
+    
+    stacksdict = bfcellstacksdict
+    crop_rois_df = crop_rois_df
+    cell_index = 0
+
+    args = [cell_index,
+            crop_rois_df,
+           stacksdict]
+    allframesdf = segmentation.cell_stack_I_by_distance_and_theta(*args)
+    # Create the individual cell stack:
+    measurement_stack = bfcellstacksdict[str(cell_index)]
+       
+    Use the polar intensity peaks found in the allframesdf to create
+    a mask with True inside the polygon formed by the polar intensity
+    peak vertices and False outside
+    
+    Return the mask
+    """
+    cellframecrop = measurement_stack[int(frame_idx)]
+    cellframedf = allframesdf[allframesdf.frame_rel==frame_idx]
+    x_center_rel = cellframedf.x_center_rel.unique()[0]
+    y_center_rel = cellframedf.y_center_rel.unique()[0]
+    R, theta = get_polar_coordinates(cellframecrop,
+                                     x_center_rel,
+                                     y_center_rel)
+
+    frametable = cellframedf.pivot_table(index='theta', aggfunc='mean').reset_index()
+    mask = np.full(cellframecrop.shape, False)
+    for idx in frametable.index:
+        theta_mask1 = np.greater(theta, frametable.loc[idx, 'min_theta'])
+        theta_mask2 = np.less(theta, frametable.loc[idx, 'max_theta'])
+        theta_mask = theta_mask1 & theta_mask2
+        peak_dist = frametable.loc[idx, 'highest_peak_dist']
+        dist_mask = (np.greater(R, 0) & np.less(R, peak_dist))
+
+        mask[theta_mask & dist_mask] = True
+    return mask
