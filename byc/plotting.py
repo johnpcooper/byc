@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 # Stats analysis tools
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
@@ -76,6 +77,58 @@ def make_ticks(x, **kwargs):
     xticks = np.linspace(x_ll, x_ul, n_ticks)
     
     return xticks
+
+def format_ticks(ax, **kwargs):
+    """
+    take <ax>, turn on minor ticks and set all ticks
+    to inner direction. 
+
+    Return nothing
+    """
+    yminorspace = kwargs.get('yminorspace', 0.5)
+    xminorspace = kwargs.get('xminorspace', 1)
+    ax.xaxis.set_minor_locator(MultipleLocator(yminorspace))
+    ax.yaxis.set_minor_locator(MultipleLocator(yminorspace))
+
+    for ticktype in ['minor', 'major']:
+        ax.tick_params(axis="y", which=ticktype, direction="in")
+        ax.tick_params(axis="x", which=ticktype, direction="in")
+
+def make_x_axis(**kwargs):
+    """
+    Plot and save an x axis with no other ticks
+    or spines. Can pass path at which to save.
+
+    Typically used to create an axis for a color map
+    """
+    xmax = kwargs.get('xmax', 40)
+    xmin = kwargs.get('xmin', 0)
+    stepsize = kwargs.get('stepsize', 5)
+    xlabel = kwargs.get('xlabel', 'Generations from\nSenescence')
+    figsize = kwargs.get('figsize', (2.5, 2.5))
+    fontsize = kwargs.get('fontsize', 12)
+    savepath = kwargs.get('savepath', f'legend_xlim_{xmin}-{xmax}.svg')
+    # Create the figure and plot
+    fig = plt.figure(figsize=figsize)
+    fig.set_dpi(300)
+    ax = fig.add_subplot(111)
+    ax.set_xlim(xmin, xmax)
+    ax.set_xticks(np.arange(xmin, xmax+1, stepsize))
+    # Remove spines
+    for spine in [ax.spines[key] for key in ['top', 'right', 'left']]:
+        spine.set_visible(False)
+    ax.set_xlabel(xlabel, fontsize=fontsize)
+    # No y ticks!
+    ax.set_yticks([])
+    fig.savefig(savepath)
+
+def remove_spines(ax):
+    """
+    Set top and right spines on <ax> to invisible
+    """
+    for spine in [ax.spines[name] for name in ['top', 'right']]:
+        spine.set_visible(False)
+
 
 def plot_fits_and_residuals(all_fits_df, dfs_list, expt_name, **kwargs):
     """
@@ -506,4 +559,103 @@ def plot_radial_avg_intensity_peaks(cell_index, crop_rois_df, stacksdict,
     rdx = save_path.rindex(f'cell{str(cell_index).zfill(3)}')
     stack_save_path = f'{save_path[0:rdx+7]}_rad_avg_stack.tif'
     skimage.io.imsave(stack_save_path, stack)
+    print(f'Saved full stack at {stack_save_path}')
+
+# for cell_index in mdf.cell_index.unique():
+def plot_cell_radial_segmentation(allframesdf):
+    tracemax = allframesdf.intensity.max() 
+    tracemin = allframesdf.intensity.min()
+    r = tracemax - tracemin
+    buff = 0.1*r
+    ylim = (tracemin - buff, tracemax + buff)
+    cell_index = allframesdf.cell_index.unique()[0]
+    savefig = True
+    dpi = 100
+    xlim = (0, 20)
+    stacksdict = bfcellstacksdict
+    celldf = allframesdf
+    cellstack = stacksdict[str(int(cell_index))]
+
+    # Adjust plot parameters
+    mpl = matplotlib
+    mpl.rcParams['font.family'] = 'Arial'
+    mpl.rcParams['font.size'] = 16
+    mpl.rcParams['axes.linewidth'] = 2
+    mpl.rcParams['axes.spines.top'] = False
+    mpl.rcParams['axes.spines.right'] = False
+    mpl.rcParams['xtick.major.size'] = 7
+    mpl.rcParams['xtick.major.width'] = 2
+    mpl.rcParams['ytick.major.size'] = 7
+    mpl.rcParams['ytick.major.width'] = 2
+
+    save_paths = []
+    for frame_idx in celldf.frame_rel.unique():
+        cellframedf = celldf[celldf.frame_rel==frame_idx]
+        frame_idx = int(frame_idx)
+        max_distance = 30
+        palette = sns.color_palette("icefire",
+                                    n_colors=len(cellframedf.theta.unique()))
+        # Create figure and add subplot
+        fig = plt.figure(figsize=(5, 8))
+        fig.set_dpi(dpi)
+        ax = fig.add_subplot(311)
+        ax.set_title(f'Cell {cell_index}, frame {frame_idx}')
+        # Plot radial intensity traces by theta. Sometimes this doesn't work because
+        # of mismatch between palette length and actual number of theta angles.
+        # Maybe beacuse of NaNs?
+        try:
+            sns.lineplot(x='radial_distance', y='intensity', hue='theta', data=cellframedf,
+                         hue_order=cellframedf.theta.unique(), palette=palette, ax=ax)
+        except Exception as e:
+            print(f'Could not plot radial intensity curves for cell {cell_index}')
+            print(f'Exception:\n{e}')
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_ylabel('Intensity', fontsize=16)
+        ax.set_xlabel('Radial Distance from Center (px)', fontsize=16)
+        # ax.annotate(f'Frame {frame_idx}', )
+        plt.legend(bbox_to_anchor=(1.05, 1), loc=2)
+        ax.legend_.remove()
+        # Plot cell crop frame with scatter plot of intensity peaks
+        ax = fig.add_subplot(312)
+        cellcrop = cellstack[frame_idx]
+        ax.imshow(cellcrop)
+        for i, t in enumerate(list(cellframedf.theta.unique())):
+            c = palette[i]
+            x = cellframedf[cellframedf.theta==t].peak_X.iloc[0]
+            y = cellframedf[cellframedf.theta==t].peak_Y.iloc[0]
+            ax.scatter(x, y, color=c)
+        x_center_rel = cellframedf.x_center_rel.iloc[0]
+        y_center_rel = cellframedf.y_center_rel.iloc[0]
+        ax.scatter(x_center_rel, y_center_rel, color='white')
+
+        # Plot cell outline mask
+        frame_mask = segmentation.get_frame_cell_mask(allframesdf, cellstack, frame_idx)
+        ax = fig.add_subplot(313)
+        ax.imshow(frame_mask)
+        plt.tight_layout()
+        if savefig:
+            reldir = celldf.compartment_reldir.iloc[0]
+            exptname = f'{celldf.date.iloc[0]}_{celldf.expt_type.iloc[0]}'
+            save_dir = os.path.join(constants.byc_data_dir, reldir)
+            save_dir = f'{save_dir}_auto'
+            save_dir = os.path.join(save_dir, 'plots')
+            if not os.path.exists(save_dir):
+                os.mkdir(save_dir)
+            filename = f'{exptname}_cell{str(cell_index).zfill(3)}_frame{str(frame_idx).zfill(3)}_rad_theta_peaks.tif'
+            save_path = os.path.join(save_dir, filename)
+            fig.savefig(save_path)
+            print(f'Saved figure at\n{save_path}')
+            save_paths.append(save_path)
+            # Close the frame figure so it stops taking up memory
+            plt.close()
+    # Read the individual frames back in and concatanate
+    # them into a stack and save
+    images = [skimage.io.imread(p) for p in save_paths]
+    stack = skimage.io.concatenate_images(images)
+    rdx = save_path.rindex(f'cell{str(cell_index).zfill(3)}')
+    stack_save_path = f'{save_path[0:rdx+7]}_rad_theta_bin_stack.tif'
+    skimage.io.imsave(stack_save_path, stack)
+    for path in save_paths:
+        os.remove(path)
     print(f'Saved full stack at {stack_save_path}')
