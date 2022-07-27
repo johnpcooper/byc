@@ -2,6 +2,7 @@ import os
 import sys
 
 import pandas as pd
+import numpy as np
 
 from byc import constants, segmentation
 from byc import standard_analysis as sa
@@ -73,7 +74,10 @@ if __name__=="__main__":
     allframesdfs_measured = []
     for cell_index in mdf.cell_index.unique():
         allframesdf = alldf[alldf.cell_index==cell_index]
-        measurement_stack = yfpcellstacksdict[str(cell_index)]
+        if type(list(yfpcellstacksdict.keys())[cell_index]) == str:
+            measurement_stack = yfpcellstacksdict[str(cell_index)]
+        else:
+            measurement_stack = yfpcellstacksdict[cell_index]
         frame_cell_masks = []
         measurements = []
         for frame_idx in allframesdf.frame_rel.unique():
