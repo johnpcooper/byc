@@ -1,8 +1,12 @@
 import os
+from sys import maxunicode
+
+from time import time
 
 import numpy as np
 import pandas as pd
 import skimage
+from skimage import io
 # Plotting tools
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,7 +18,7 @@ from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
 # Stuff from byc
-from byc import files, constants
+from byc import files, constants, segmentation
 
 plt_params_dict = {'font.sans-serif': 'Arial'}
 
@@ -36,6 +40,59 @@ def set_styles(plt, matplotlib):
             import matplotlib.pyplot as plt
             import matplotlib
             """)
+
+def savefig_with_timestamp(fig, tight_layout=True):
+    if tight_layout:
+        plt.tight_layout()
+    abspath = os.path.abspath(os.path.join('.', f'{time()}.png'))
+    fig.savefig(abspath)
+    print(f'Figure saved at \n{abspath}')
+
+def fig_ax(figsize=(2.5, 2.5), subplotpos=(111)):
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(subplotpos)
+    fig.set_dpi(300)
+    remove_spines(ax)
+    return fig, ax
+
+class annoying_strings():
+    """
+    A place to store strings that I can never remember how to format
+    """
+    def __init__(self):
+
+        self.k_inverse_hrs = 'k (hr$^{-1}$)'
+        self.r_sq = 'R$^2$'
+        self.mu = u"\u03bc"
+
+def figure(**kwargs):
+    figsize = kwargs.get('figsize', (2.5, 2.5))
+    height_scale = kwargs.get('height_scale', 1)
+    width_scale = kwargs.get('width_scale', 1)
+    dpi = kwargs.get('dpi', 250)
+    
+    figsize = (figsize[0]*width_scale, figsize[1]*height_scale)
+    fig = plt.figure(figsize=figsize)
+    fig.set_dpi(dpi)
+
+    return fig
+
+def figure_ax(**kwargs):
+    figsize = kwargs.get('figsize', (2.5, 2.5))
+    height_scale = kwargs.get('height_scale', 1)
+    width_scale = kwargs.get('width_scale', 1)
+    dpi = kwargs.get('dpi', 250)
+    
+    figsize = (figsize[0]*width_scale, figsize[1]*height_scale)
+    fig = plt.figure(figsize=figsize)
+    fig.set_dpi(dpi)
+    
+    ax = fig.add_subplot(111)
+
+    return fig, ax
+
+def legend_outside():
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2)
 
 def make_yticks_0cent(y, **kwargs):
     
@@ -81,18 +138,60 @@ def make_ticks(x, **kwargs):
 def format_ticks(ax, **kwargs):
     """
     take <ax>, turn on minor ticks and set all ticks
-    to inner direction. 
+    to inner direction. Can pass <xminorspace> and
+    <yminorspace> as keyword args. Otherwise defaults
+    to a minor tick every 1/5 of space between major 
+    ticks.
 
     Return nothing
     """
-    yminorspace = kwargs.get('yminorspace', 0.5)
-    xminorspace = kwargs.get('xminorspace', 1)
-    ax.xaxis.set_minor_locator(MultipleLocator(yminorspace))
-    ax.yaxis.set_minor_locator(MultipleLocator(yminorspace))
+    add_minor_x = kwargs.get('add_minor_x', True)
+    add_minor_y = kwargs.get('add_minor_y', True)
+    tickdirection = kwargs.get('tickdirection', 'in')      
+    # Default to minor tick every 1/5 of space between
+    # major ticks
+    try:
+        xmajorspace = np.diff(ax.get_xticks())[0]
+    except:
+        xmajorspace = np.nan
+    ymajorspace = np.diff(ax.get_yticks())[0]
+    xminorspace = xmajorspace/5
+    yminorspace = ymajorspace/5
+
+    yminorspace = kwargs.get('yminorspace', yminorspace)
+    xminorspace = kwargs.get('xminorspace', xminorspace)
+
+    if add_minor_x:
+        ax.xaxis.set_minor_locator(MultipleLocator(xminorspace))
+    if add_minor_y:
+        ax.yaxis.set_minor_locator(MultipleLocator(yminorspace))
 
     for ticktype in ['minor', 'major']:
-        ax.tick_params(axis="y", which=ticktype, direction="in")
-        ax.tick_params(axis="x", which=ticktype, direction="in")
+        ax.tick_params(axis="y", which=ticktype, direction=tickdirection)
+        ax.tick_params(axis="x", which=ticktype, direction=tickdirection)
+
+def transparent_boxes(ax, **kwargs):
+    """
+    Return nothing. Set box plot fill to white, edgecolor
+    to black by default
+
+    Sourced from https://stackoverflow.com/questions/43434020/black-and-white-boxplots-in-seaborn
+    """
+    facecolor = kwargs.get('facecolor', 'white')
+    edgecolor = kwargs.get('edgecolor', 'black')
+    edgewidth = kwargs.get('edgewidth', 1)
+    for i,box in enumerate(ax.artists):
+        box.set_edgecolor(edgecolor)
+        box.set_facecolor(facecolor)
+        box.set_linewidth(edgewidth)
+            # iterate over whiskers and median lines
+        for j in range(6*i,6*(i+1)):
+            try:
+                ax.lines[j].set_color(edgecolor)
+                ax.lines[j].set_linewidth(edgewidth)
+            except Exception as E:
+                # print(f"Could not change color of line with j {j}")
+                pass
 
 def make_x_axis(**kwargs):
     """
@@ -562,7 +661,9 @@ def plot_radial_avg_intensity_peaks(cell_index, crop_rois_df, stacksdict,
     print(f'Saved full stack at {stack_save_path}')
 
 # for cell_index in mdf.cell_index.unique():
-def plot_cell_radial_segmentation(allframesdf):
+def plot_cell_radial_segmentation(allframesdf, stacksdict, **kwargs):
+
+    manual_savedir = kwargs.get('manual_savedir', None)
     tracemax = allframesdf.intensity.max() 
     tracemin = allframesdf.intensity.min()
     r = tracemax - tracemin
@@ -572,7 +673,6 @@ def plot_cell_radial_segmentation(allframesdf):
     savefig = True
     dpi = 100
     xlim = (0, 20)
-    stacksdict = bfcellstacksdict
     celldf = allframesdf
     cellstack = stacksdict[str(int(cell_index))]
 
@@ -635,10 +735,13 @@ def plot_cell_radial_segmentation(allframesdf):
         ax.imshow(frame_mask)
         plt.tight_layout()
         if savefig:
-            reldir = celldf.compartment_reldir.iloc[0]
+            if manual_savedir == None:
+                reldir = celldf.compartment_reldir.iloc[0]
+                save_dir = os.path.join(constants.byc_data_dir, reldir)
+            else:
+                save_dir = manual_savedir
+                
             exptname = f'{celldf.date.iloc[0]}_{celldf.expt_type.iloc[0]}'
-            save_dir = os.path.join(constants.byc_data_dir, reldir)
-            save_dir = f'{save_dir}_auto'
             save_dir = os.path.join(save_dir, 'plots')
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
@@ -659,3 +762,131 @@ def plot_cell_radial_segmentation(allframesdf):
     for path in save_paths:
         os.remove(path)
     print(f'Saved full stack at {stack_save_path}')
+
+
+def plot_cell_chase_stack(tracedf, cellstacksdict, cellkey, manual_contrast=False, **kwargs):
+    """
+    Make a tif stack plot of YFP vs. time for the data in <tracedf>
+    with inset axes showing raw data for the bf and yfp channels of
+    the cell contained in <cellstacksdict>
+
+    <cellkey> should be compartment_name-cell0 or some other index
+    used to uniquely identify individual trace measurements in a dataset
+    """
+    
+    time_delta_hrs = kwargs.get('time_delta_hrs', 10/60)
+    tracedf.sort_values(by='x_input', inplace=True)
+
+    channel_stacks = []
+    missing_channels = []
+    for key in cellstacksdict.keys():
+        channel_stack = cellstacksdict[key]
+        channel_stacks.append(channel_stack)
+        if type(channel_stack) == np.ndarray:
+            channel = key
+        else:
+            missing_channels.append(key)
+            print(f'{cellkey} missing {key} channel')
+    stack = cellstacksdict[channel]
+    frame = stack[0]
+    height = frame.shape[0]
+    width = frame.shape[1]
+    width_scale = width/width
+    height_scale = height/width
+    mins = [np.min(frame) for frame in list(stack)]
+    meds = [np.median(frame) for frame in list(stack)]
+    maxes = [np.max(frame) for frame in list(stack)]
+
+    basename = f'{cellkey}_chase_{channel}'
+    savedir = f'{constants.byc_data_dir}meta\\plots'
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+    x, y = tracedf.x_input, tracedf.y_input_norm
+    y_pred = tracedf.y_pred_norm
+    b = tracedf.b.iloc[0]
+    dist_from_sen = tracedf.dist_from_sen.iloc[0]
+    chase_frame = int(tracedf.chase_frame.iloc[0])
+
+    xlim = (0, 3)
+    ylim = (0, 1.2)
+
+    xlabel = 'Hours'
+    ylabel = 'YFP/YFP(t=0)'
+
+    xticks = np.arange(np.min(xlim), np.max(xlim) + 0.1, 0.5)
+
+    vmin = np.median(meds[-10:])
+    vmax = np.max(maxes)
+
+    if not manual_contrast:
+        vmin = None
+        vmax = None
+
+    linekwargs = {
+        'color': 'black'
+    }
+
+    scatterkwargs = {
+        's': 15,
+        'facecolor': 'white',
+        'edgecolor': 'black'
+    }
+
+    imkwargs = {
+        'cmap': 'gray',
+        'vmin': vmin,
+        'vmax': vmax
+    }
+    savepaths = []
+    for i, frame in enumerate(list(stack)):
+
+        fig, ax = figure_ax()
+        fig.set_dpi(150)
+        ax.set_xlim(xlim)
+        ax.set_xticks(xticks)
+        ax.set_ylim(ylim)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
+        remove_spines(ax)
+        format_ticks(ax)
+        
+        unit_dim = 0.4
+        axins1 = ax.inset_axes([0.5, 0.8, unit_dim*width_scale, unit_dim*height_scale])
+        axins2 = ax.inset_axes([0.5, 0.6, unit_dim*width_scale, unit_dim*height_scale])
+        for a in [axins1, axins2]:
+            a.get_xaxis().set_visible(False)
+            a.get_yaxis().set_visible(False)
+        
+
+        bxy = (np.max(xlim)*0.3, np.max(ylim)*0.4)
+        dxy = (np.max(xlim)*0.3, np.max(ylim)*0.3)
+        cxy = (np.max(xlim)*0.3, np.max(ylim)*0.2)
+
+        ax.annotate(f'k={np.round(b, 3)}', xy=bxy)
+        ax.annotate(f'Gen. from sen.={int(dist_from_sen)}', xy=dxy)
+        ax.annotate(f'Chase frame={chase_frame}', xy=cxy)
+
+        ax.scatter(x, y, **scatterkwargs)
+        ax.plot(x, y_pred, **linekwargs)
+
+        axins1.imshow(cellstacksdict['bf'][i])
+        axins2.imshow(cellstacksdict['yfp'][i], **imkwargs)
+
+        chase_hr = chase_frame*time_delta_hrs
+        hr_rel_chase = i*time_delta_hrs - chase_hr
+        axins1.set_title(f'{str(np.round(hr_rel_chase, 2)).zfill(4)} hrs. post chase', fontsize=7)
+
+        plt.tight_layout()
+
+        savepath = os.path.join(savedir, f'{basename}_frame{str(i).zfill(3)}.tif')
+        savepaths.append(savepath)
+        fig.savefig(savepath)
+        plt.close(fig)
+
+    allframes = [io.imread(path) for path in savepaths]
+    plotstack = io.concatenate_images(allframes)
+    plotstacksavepath = os.path.join(savedir, f'{basename}.tif')
+    io.imsave(plotstacksavepath, plotstack)
+    for path in savepaths:
+        os.remove(path)
+    print(f'Saved plot stack at\n{plotstacksavepath}')

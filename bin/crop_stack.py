@@ -1,17 +1,16 @@
 import os
+import sys
 
 import skimage
 from skimage import io
 import numpy as np
-from scipy import ndimage
 
 import matplotlib.pyplot as plt
 
-from byc import utilities, files, process, constants, rotation
+from byc import files
 
-def main():
+def main(fraction=0.5, start_pixel_x=None):
 
-    fraction=0.5
     image_paths = files.select_files('choose images')
     writedir = os.path.join(os.path.dirname(image_paths[0]), 'cropped')
     if not os.path.exists(writedir):
@@ -26,8 +25,11 @@ def main():
 
             total_width = image.shape[2]
             crop_width = int(np.round(total_width*fraction))
-
-            start = int(np.round((total_width - crop_width)/2))
+            
+            if start_pixel_x == None:
+                start = int(np.round((total_width - crop_width)/2))
+            else:
+                start = int(start_pixel_x)
             end = start + crop_width
 
             cropped_stack = image[:, :, start:end]
@@ -41,4 +43,20 @@ def main():
             print('Image array should have 3 dimensions')
 
 if __name__ == '__main__':
-    main()
+    if sys.argv:
+        print(sys.argv)
+        if len(sys.argv) == 3:
+            start_pixel_x = sys.argv[1]
+            fraction = float(sys.argv[2])
+        elif len(sys.argv) ==2:
+            start_pixel_x = sys.argv[1]
+            fraction = 0.5
+            print(f'Defaulting to middle {fraction} of image starting at user input pixel {start_pixel_x}')
+        else:
+            start_pixel_x = 256
+            fraction= 0.5
+            print(f'Defaulting to middle {fraction} of image starting at default pixel {start_pixel_x}')
+
+        main(start_pixel_x=start_pixel_x, fraction=fraction)
+    else:
+        main()

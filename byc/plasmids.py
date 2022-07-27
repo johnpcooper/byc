@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 from snapgene_reader import snapgene_file_to_dict
-from byc import files, utilities, constants
+from byc import constants
 
 class Plasmids(object):    
     """
@@ -182,3 +182,38 @@ def extend_nanodrop_df(spec_df_path, target_fmol_per_ul=40, writeoutput=True):
     else:
         print("Sample ID and Nucleic Acid not found in dataframe columns")
         return None
+
+def plasmid_index_from_name(plasmid_name):
+    """
+    Return the 3-numeral string at the end
+    of <plasmid_name>
+    """
+    m = re.search(constants.patterns.plasmid_name, plasmid_name)
+    if m == None:
+        print(f'''
+                No plasmid_name-like pattern found in plasmid_name
+                argument''')
+        return None
+    else:
+        index_str = m.groups()[1]
+        index = np.float16(index_str)
+        return index
+
+def substrate_name_from_plasmid_name(plasmid_name):
+    """
+    Return the name of the substrate being expressed from
+    <plasmid_name> using spreadsheet at
+    constants.substrates_index_path
+    """
+    substrates_index = pd.read_csv(constants.substrates_index_path)
+    plasmid_index = plasmid_index_from_name(plasmid_name)
+    if plasmid_index != 1:
+        found_vals_df = substrates_index.where(substrates_index==plasmid_index).dropna(how='all').dropna(axis=1)
+        found_index = found_vals_df.index.unique()[0]
+        substrate_name = substrates_index.loc[found_index, 'Substrate']
+    else:
+        print(f'''
+                {plasmid_name} could not be found in plasmid collection''')
+        substrate_name = None
+    
+    return substrate_name

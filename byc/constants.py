@@ -29,12 +29,12 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
                   'cell_roi_db_path': os.path.join(package_path, 'cell_roi_database.json')}
 
 byc_data_dir = os.path.join(source_path, 'data\\')
-# byc_data_dir = r"E:\byc_data"
+compartment_index_path = os.path.join(byc_data_dir, 'meta/compartments_index.csv')
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
-steady_state_data_dir = "C:\\Users\\John Cooper\\Box Sync\\Finkelstein-Matouschek\\images\\"
-steady_state_data_path = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
-steady_state_rep_image_dir  = r"C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\representative_images"
-flow_data_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/flow_cytometry"
+steady_state_data_dir = "C:\\Users\\johnp\\Box\\Finkelstein-Matouschek\\images\\"
+steady_state_data_path = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
+steady_state_rep_image_dir  = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\representative_images"
+flow_data_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/flow_cytometry"
 
 master_index_cols = ['date',
                      'expt_type',
@@ -77,15 +77,16 @@ ss_master_index_cols = ['date',
 
 default_fluor_channels = ['yfp', 'rfp']
 default_channel_names = ['bf', 'yfp', 'rfp']
+all_channel_names = ['bf', 'yfp', 'rfp', 'mko', 'bfp', 'gfp']
 default_raw_channel_names = ['Brightfield', 'YFP', 'RFP']
 
 # Some constants for quickly accessing construct names and features
-plasmids_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/"
+plasmids_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/plasmids/"
 plasmid_subdirs = ['YeastToolkit', 'JC', 'BLS']
-ytk_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/plasmids/YeastToolkit"            
-strains_dir = "C:/Users/John Cooper/Box Sync/Finkelstein-Matouschek/yeast_engineering/strains"
-strains_db_path = r'C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\yeast_engineering\strains\JPC_Strains.xlsx'
-substrates_index_path = r'C:\Users\John Cooper\Box Sync\Finkelstein-Matouschek\images\meta_analysis\Analysis\Substrates_Index.csv'
+ytk_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/plasmids/YeastToolkit"            
+strains_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/strains"
+strains_db_path = r'C:\Users\johnp\\Box\Finkelstein-Matouschek\yeast_engineering\strains\JPC_Strains.xlsx'
+substrates_index_path = r'C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\Substrates_Index.csv'
 
 class Patterns(object):
 
@@ -123,7 +124,7 @@ class Patterns(object):
         """
         centuries = '|'.join([str(num) for num in range(19, 22)])
         decades_years = '|'.join([str(num).zfill(2) for num in range(0, 100)])
-        months = '|'.join([str(num).zfill(2) for num in range(0, 12)])
+        months = '|'.join([str(num).zfill(2) for num in range(0, 13)])
         days = '|'.join([str(num).zfill(2) for num in range(0, 32)])
 
         pattern = f"({centuries})({decades_years})({months})({days})"
@@ -169,7 +170,8 @@ class Patterns(object):
         genotypes = ['BY4741',
                      'CMY3465',
                      'rpn4d',
-                     'ubr2d']
+                     'ubr2d',
+                     'BY4742']
         genotypes = '|'.join(genotypes)
         pattern  = f'({genotypes})'
         return pattern
@@ -275,3 +277,20 @@ class Patterns(object):
         return pattern
 
 patterns = Patterns()
+patterns_list = [patterns.genotype,
+                 patterns.strain_name,
+                 patterns.plasmid_name,
+                 patterns.date,
+                 patterns.tet_concn,
+                 patterns.estradiol_concn,
+                 patterns.clone_number]
+
+col_names = ['background',
+             'strain_name',
+             'plasmid',
+             'date',
+             'tet_concn',
+             'estradiol_concn',
+             'clone_number']
+
+patterns_dict = dict(zip(col_names, patterns_list))

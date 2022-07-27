@@ -51,6 +51,10 @@ class Experiments(object):
         if len(dates) == len(self.all_master_idx_paths):
             paths_dict = dict(zip(dates, self.all_master_idx_paths))
         else:
+            print(f'Found unequal number of expt dates and master indices')
+            print(dates)
+            for path in self.all_master_idx_paths:
+                print(path)
             paths_dict = None
             
         return paths_dict

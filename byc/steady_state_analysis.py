@@ -1,14 +1,11 @@
 import os, re, shutil, skimage
 import numpy as np
 import pandas as pd
-from scipy.stats import shapiro
-import matplotlib.pyplot as plt
-import matplotlib
 import tkinter as tk
 import tkinter.filedialog as tkdia
 from functools import reduce
 
-from byc import constants, files
+from byc import constants
 
 
 def select_files(prompt):
@@ -64,7 +61,9 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
             for channel_name in channel_names:
                 if ('measdirname' in info.keys() and 'path' in info.keys()):
                     print('Found updated format data')
-                    basefilename = info.measdirname.replace('_1', '')
+                    measdirname = info.measdirname
+                    if measdirname[-2:] == '_1':
+                        basefilename = measdirname[0:-2]
                     filename = f'{basefilename}_{str(fov).zfill(3)}_{channel_name}.csv'
                     filepath = os.path.join(info.path, filename)
                     print(f'Looking for data at {filepath}')
@@ -118,7 +117,7 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
     return dfs_list
 
 
-def make_expt_df(master_index_path, bg_channel='yfp', filter_cells=False):
+def make_expt_df(master_index_path, bg_channel='yfp', filter_cells=False, **kwargs):
     """
     Find a {exptdate}_master_index.csv file at master_index_df_path,
     read in all steady state imaging measurement .csvs found 
@@ -221,7 +220,7 @@ def set_flow_cyto_dfs_list(master_df):
         
     return dfs_list
 
-def set_proportional_weights_by_plasmid(df):
+def set_proportional_weights_by_plasmid(df, colname='plasmid'):
     
     """ Return the dataframe passed to this function with a new column called 'weight'. 
         The weight for a row (cell) is 1 - the number of cells with that cell's unique
@@ -233,17 +232,17 @@ def set_proportional_weights_by_plasmid(df):
         WARNING: currently this function applies weight by df.index.levels[0]"""
     
     df.loc[:, 'weight'] = 0
-    df = df.set_index(['plasmid', 'cell_index'])
+    df = df.set_index([colname, 'cell_index'])
 
     for plasmid_level in df.index.levels[0]:
-        print(plasmid_level)
+        # print(plasmid_level)
 
         n_cells = len(df.loc[plasmid_level, :])
-        print(f"Number of cells in {plasmid_level} group = {n_cells}")
+        # print(f"Number of cells in {plasmid_level} group = {n_cells}")
         proportion = n_cells / len(df)
-        print(f"Fraction of all cell in {plasmid_level} = {proportion}")
+        # print(f"Fraction of all cell in {plasmid_level} = {proportion}")
         weight = 1 / proportion
-        print(f"weight={weight}")
+        # print(f"weight={weight}")k
         df.loc[plasmid_level, 'weight'] = weight
         
     return df.reset_index()

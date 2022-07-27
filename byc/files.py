@@ -1,7 +1,7 @@
 import os
 import re
 import shutil
-import glob
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -66,6 +66,80 @@ def read_roi_position_indices(path):
         
     return np.array(bud_positions)
 
+def add_abspath_to_df(df, colname='crop_roi_set_relpath'):
+    """
+    Find <colname> in df and append constants.byc_data_dir to 
+    the beginning of the <colname> value to make it a full path
+    relative to the installation directory of byc
+
+    Return nothing, new column will be added to dataframe in place
+    """
+    fullpaths = constants.byc_data_dir + df[colname].astype(str)
+    fullpaths = [os.path.abspath(path) for path in fullpaths]
+    screenedpaths = []
+    nonexisting_paths = []
+    for p in fullpaths:
+        if os.path.exists(p):
+            screenedpaths.append(p)
+        else:
+            if p not in nonexisting_paths:
+                nonexisting_paths.append(p)
+            screenedpaths.append(p)
+    if len(nonexisting_paths)>0:
+        print(f'Did not find {len(nonexisting_paths)} following paths')
+        for p in nonexisting_paths:
+            print(p)
+    
+    df.loc[:, colname.replace('relpath', 'abspath')] = screenedpaths
+
+def add_cell_channel_crop_stack_paths(df, channels=['bf', 'yfp']):
+    
+    dates = df.date.astype(int).astype(str)
+    types = df.expt_type
+    xys = df.xy.astype(int).astype(str).str.zfill(2)
+    cell_idxs = df.cell_index.astype(int).astype(str).str.zfill(3)
+
+    for channel in channels:
+        filenames = dates + '_' + types + '_xy' + xys + '_cell' + cell_idxs + f'_{channel}_stack.tif'
+        filerelpaths = df.compartment_reldir.str.cat(filenames, sep='\\')
+        fileabspaths = constants.byc_data_dir + filerelpaths
+        fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
+
+        df.loc[:, f'{channel}_crop_stack_abspath'] = fileabspaths
+
+def add_cell_measurement_roi_paths(df, channels=['bf', 'yfp'], source_col_suffix='_crop_stack_abspath'):
+    
+    if channels==None:
+        channels = constants.all_channel_names
+
+    to_replace = '_crop_rois.zip'
+    # For each row in the datafrme, we should be able to find
+    # one measurement_roi at its path unless this experiment
+    # was automatically segmented. Need to merge the lists of 
+    # filepaths
+    channel_meas_paths = {}
+    newcolnames = []
+    for channel in channels:
+        source_col = f'{channel}{source_col_suffix}'
+        to_replace = f'{channel}_stack.tif'
+        replace_with = f'{channel}_stack_measurement_rois.zip'
+        newcolname = f'{channel}_stack_measurement_rois_path'
+        newcolnames.append(newcolname)
+        newvals = df[source_col].str.replace(to_replace, replace_with)
+        channel_meas_paths[channel] = newvals
+        df.loc[:, newcolname] = newvals
+
+    # figure out which stack path measurement rois version has data,
+    # if any. If neither refers to an existing rois.zip file, assume
+    # the cell was segmented automatically
+    df.loc[:, 'measurement_rois_path'] = np.nan
+    for meas_path_name in newcolnames:
+        # Set a generic "measurement_rois_path" columns using only generated measurement
+        # roi paths that exist. If the path doesn't exist for any channel,
+        # then the value will remain np.nan
+        channel_bools = df.apply(lambda row : os.path.exists(row[meas_path_name]), axis=1)
+        df.loc[channel_bools, 'measurement_rois_path'] = df.loc[channel_bools, meas_path_name]
+
 def read_rectangular_rois_as_df(rois_path):
     """
     Use the read_roi package to read in the
@@ -104,16 +178,16 @@ def read_roi_as_df(path):
     values which are also dicts
     """
     roi = read_roi_zip(path)
-    print(path)
+    # print(path)
     frame_dfs = []
     roi_index = 0
     for key, val in roi.items():
-        print(roi_index)
+        # print(roi_index)
         # Cycle through the dictionaries for this ROI
         # and add the information to a dataframe (roi_df)
         frame_df = pd.DataFrame(columns=val.keys())
         val_types = [type(item) for item in val.values()]
-        print(val['type'])
+        # print(val['type'])
         if list in val_types:
             for k, v in val.items():
             # Different dicts in the ROI have different dimensions
@@ -128,6 +202,7 @@ def read_roi_as_df(path):
 
             frame_df.loc[:, 'roi_index'] = roi_index
             frame_df.loc[:, 'path'] = path
+            frame_df.loc[:, 'frame'] = frame_df.position-1
             frame_dfs.append(frame_df)
             roi_index += 1
 
@@ -216,7 +291,8 @@ def get_channel_names(sampledir):
     namesdict = {'Brightfield': 'bf',
                  'YFP': 'yfp',
                  'RFP': 'rfp',
-                 'GFP': 'gfp'}
+                 'GFP': 'gfp',
+                 'mKO': 'mko'}
     fluor_channel_names = []
     channel_names = []
     raw_channel_names = []
@@ -582,7 +658,16 @@ def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
         return None
     else:
         pass
-    
+    print(f'Found {len(filepaths)} potential {mdf_type} roi df .csv files')
+    # If there aren't any single cell index csvs of the type specified,
+    # return an empty dataframe
+    file_exist_bools = [os.path.exists(path) for path in filepaths]
+    if True not in file_exist_bools:
+        print(f'Found no csvs at {filepaths}')
+        print(F'Returning empty dataframe')
+        return pd.DataFrame(None)
+    else:
+        pass
     dfs = [pd.read_csv(path) for path in filepaths]
     try:
         mdf = pd.concat(dfs, ignore_index=True).sort_values(by='cell_index')
@@ -680,4 +765,46 @@ def path_annotate_master_index_df(mdf):
         for i, col_name in enumerate(col_names):
             mdf.loc[mdf.cell_index==cell_index, col_name] = vals[i]
         
-    return mdf    
+    return mdf
+
+def get_likely_compartment_dirs(**kwargs):
+    """
+    Return a list of full compartment directory paths found
+    in byc.constants.byc_data_dir that match the 
+    'byc.constants.byc_data_dir' pattern. 
+    """
+    # the pathlib module Path allows creation of a Path object with 
+    # a parents attribute. The 2nd parent up should be byc_data_dir
+    # if the fits_table is in a compartment dir
+    rootdir = os.path.abspath(constants.byc_data_dir)
+    dirs = [x[0] for x in os.walk(rootdir)]
+    dirs = [d for d in dirs if os.path.abspath(str(Path(d).parents[1])) == rootdir]
+    
+    return dirs
+
+def get_fits_table_paths(**kwargs):
+    """
+    Return a list of paths to .csv files containing
+    exponential fitting, distance from senescence, and
+    other analysis with a row for each cell in an individual
+    flow compartment of a BYC experiment
+    """
+    dirs = get_likely_compartment_dirs()
+    ft_paths = [os.path.join(d, 'fits_table.csv') for d in dirs]
+    ft_paths = [p for p in ft_paths if os.path.exists(p)]
+    
+    return ft_paths
+    
+def get_allfitsdf_paths(**kwargs):
+    """
+    Return a list of paths to .csv files containing
+    exponential fitting, distance from senescence, full
+    fluorescence traces, and other analysis with a row for
+    each timepoint per cell in an individual
+    flow compartment of a BYC experiment
+    """
+    dirs = get_likely_compartment_dirs()
+    df_paths = [os.path.join(d, 'allfitsdf.csv') for d in dirs]
+    df_paths = [p for p in df_paths if os.path.exists(p)]
+    
+    return df_paths

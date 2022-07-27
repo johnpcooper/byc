@@ -3,7 +3,6 @@ import os
 import tifffile as tf
 import tkinter as tk
 import tkinter.filedialog as dia
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -12,9 +11,12 @@ from skimage.filters import threshold_otsu
 from skimage import img_as_uint
 import skimage
 from scipy.signal import medfilt, find_peaks
+
+from matplotlib.path import Path
+
 from read_roi import read_roi_file, read_roi_zip
 
-from byc import constants, utilities, files, standard_analysis
+from byc import constants, utilities, files, standard_analysis, plotting
 
 class Cell_Stack(object):
     """
@@ -344,10 +346,20 @@ def fill_crop_roi_df(cell_index, mdf, dataset, bf_stack=None):
 
     Return the filled crop_roi_df
     """
-    cell_row = mdf[mdf.cell_index==cell_index]
+    if type(mdf) == pd.core.series.Series:
+        multi_cell_mdf = False
+    else:
+        multi_cell_mdf = True
+
+    if multi_cell_mdf:
+        cell_row = mdf[mdf.cell_index==cell_index]
+        rois_path = cell_row.crop_rois_path.iloc[0]
+        bf_stack_path = cell_row.bf_stack_path.iloc[0]
+    else:
+        cell_row = mdf
+        rois_path = cell_row.crop_rois_path
+        bf_stack_path = cell_row.bf_stack_path
     # Read in various files
-    rois_path = cell_row.crop_rois_path.iloc[0]
-    bf_stack_path = cell_row.bf_stack_path.iloc[0]
     if bf_stack is None:
         bf_stack = skimage.io.imread(bf_stack_path)
     rois_df = files.read_rectangular_rois_as_df(rois_path)
@@ -384,11 +396,15 @@ def fill_crop_roi_df(cell_index, mdf, dataset, bf_stack=None):
     filled_rois_df.loc[:, 'frame_rel'] = filled_rois_df.frame - first_frame
     # Add fluorescence and brightfild intensity measurements etc.
     # if they exist
-    try:
-        alldf = pd.concat(dataset.cell_trace_dfs, ignore_index=True)
-        cell_trace_df = alldf[alldf.cell_index==cell_index].reset_index()
-    except Exception as e:
-        print(f'Could not find measurement dfs. Exception/n{e}')
+    if dataset is not None:
+        try:
+            alldf = pd.concat(dataset.cell_trace_dfs, ignore_index=True)
+            cell_trace_df = alldf[alldf.cell_index==cell_index].reset_index()
+        except Exception as e:
+            print(f'Could not find measurement dfs. Exception\n{e}')
+            cell_trace_df = None
+    else:
+        print(f'Not looking for fluorescence trace measurements')
         cell_trace_df = None
     if cell_trace_df is not None:
         for col in list(cell_trace_df.columns):
@@ -398,9 +414,13 @@ def fill_crop_roi_df(cell_index, mdf, dataset, bf_stack=None):
                 filled_rois_df.loc[:, col] = np.nan
                 filled_rois_df.loc[:, col] = cell_trace_df.loc[:, col]
     # Add all information from this cell's entry in the
-    # master index dataframe 
-    for col in cell_row.columns:
-        filled_rois_df.loc[:, col] = cell_row[col].iloc[0]
+    # master index dataframe
+    if multi_cell_mdf:
+        for col in cell_row.columns:
+            filled_rois_df.loc[:, col] = cell_row[col].iloc[0]
+    else:
+        for col in cell_row.keys():
+            filled_rois_df.loc[:, col] = cell_row[col]
     
     return filled_rois_df
 
@@ -467,26 +487,37 @@ def get_channel_dfs(crop_rois_df):
         channel_dfs.append(channel_df)
         print(f'Added channel df to {channel} to <channel_dfs> from:/n{channel_df_path}')
 
-def make_cell_roi_dfs(mdf, bycdataset=None, return_crop_stacks=False):
+def make_cell_roi_dfs(mdf, use_bycdataset=False, bycdataset=None, return_crop_stacks=False):
     """
     For each cell in the <mdf>, read its crop rois into a dataframe,
     annotate the dataframe with x, y coordinates of crop ROI center,
     annotate with light intensity measurements 
     """
-    if bycdataset is None:
-        bycdataset = standard_analysis.bycDataSet(mdf=mdf)
-        print(f'Read in data set using provided master index')
+    if use_bycdataset:
+        if bycdataset is None:
+            bycdataset = standard_analysis.bycDataSet(mdf=mdf)
+            print(f'Read in data set using provided master index')
     crop_roi_dfs = []
-    
-    for i, cell_index in enumerate(list(mdf.cell_index.unique())):
+    # If there's only one cell in the mdf
+    if type(mdf) == pd.core.series.Series:
+        multi_cell_mdf = False
+        cell_indices = [mdf.cell_index]
+    else:
+        cell_indices = list(mdf.cell_index.unique())
+        multi_cell_mdf = True
+    for i, cell_index in enumerate(cell_indices):
         # Only read in a new brightfield stack if it's different from
         # the brightfield stack for the previous cell
         print(f'Making roi dataframe for cell {cell_index}')
         if i == 0:
-            bf_stack_path = mdf.loc[mdf.cell_index==cell_index, 'bf_stack_path'].iloc[0]
+            if multi_cell_mdf:
+                bf_stack_path = mdf.loc[mdf.cell_index==cell_index, 'bf_stack_path'].iloc[0]
+            else:
+                bf_stack_path = mdf.bf_stack_path
             prev_bf_stack_path = bf_stack_path
             bf_stack = skimage.io.imread(bf_stack_path)
-            print(f'Read in brightfield image with shape {bf_stack.shape} from/{bf_stack_path}')
+            print(f'Read in brightfield image with shape {bf_stack.shape} from\n{bf_stack_path}')
+        # Don't have to worry about single cell mdf because in that case, i will never be above 0
         else:
             new_bf_stack_path = mdf.loc[mdf.cell_index==cell_index, 'bf_stack_path'].iloc[0]
             if prev_bf_stack_path == new_bf_stack_path:
@@ -497,7 +528,10 @@ def make_cell_roi_dfs(mdf, bycdataset=None, return_crop_stacks=False):
                 print(f'Read in brightfield image with shape {bf_stack.shape} from/{new_bf_stack_path}')
         # segmentation.fill_crop_roi_df annotates center of crop rois on each
         # frame and will soon include original measured fluorescence
-        crop_rois_df = fill_crop_roi_df(cell_index, mdf, bycdataset, bf_stack=bf_stack)
+        if use_bycdataset:
+            crop_rois_df = fill_crop_roi_df(cell_index, mdf, bycdataset, bf_stack=bf_stack)
+        else:
+            crop_rois_df = fill_crop_roi_df(cell_index, mdf, None, bf_stack=bf_stack)
         crop_roi_dfs.append(crop_rois_df)
 
     return crop_roi_dfs
@@ -534,7 +568,7 @@ def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
         x_lower = x_center - x_buffer
         y_upper = y_center + y_buffer
         y_lower = y_center - y_buffer
-        # Annotate relative center x and y base on limits
+        # Annotate relative center x and y based on limits
         # defined above
         cellroidf.loc[cellroidf.frame==frame_idx, 'x_center_rel'] = x_center - x_lower
         cellroidf.loc[cellroidf.frame==frame_idx, 'y_center_rel'] = y_center - y_lower
@@ -553,11 +587,39 @@ def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
 
     return cropped_frames, cellroidf
 
+def check_cell_stack_dimensions(cell_stack):
+    """
+    Check that each frame of the cell crop stack (<cell_stack>)
+    has the same dimensions. If not, crop the stacks down to
+    the minimum x, y dimensions found in the stack. Must do this
+    because sometimes crop ROIs spill over edge of source stack
+    and get cut off differently from frame to frame. Numpy arrays
+    of lists must have items of same dimensions.
+    
+    Return the cropped stack (or, if all frames have same dimensions,
+    return the original stack)
+    """
+    shapes = [cell_stack[frame].shape for frame in range(len(cell_stack))]
+    widths = [shape[1] for shape in shapes]
+    heights = [shape[0] for shape in shapes]
+
+    if len(np.unique(heights)) > 1:
+        height_to_use = np.min(heights)
+        print(f'Found frames with disparate y dimension, cropping to {height_to_use}')
+        cell_stack = [frame[0:height_to_use, :] for frame in cell_stack]
+    if len(np.unique(widths)) > 1: 
+        width_to_use = np.min(widths)
+        print(f'Found frames with disparate x dimension, cropping to {width_to_use}')
+        cell_stack = [frame[:, 0:width_to_use] for frame in cell_stack]
+        
+    return cell_stack
+
 def get_cell_crop_stack(cell_roi_df,
                         source_stack,
                         x_buffer=None,
                         y_buffer=None,
-                        save_cell_stacks=True):
+                        save_cell_stacks=True,
+                        **kwargs):
     """
     Crop the <source_stack> (typically brightfield or a fluorescent channel)
     using the x_center and y_center columns found in <cell_roi_df> with 
@@ -570,33 +632,42 @@ def get_cell_crop_stack(cell_roi_df,
     """
     crop_args = [cell_roi_df]
     crop_kwargs = {'source_stack': source_stack}
+    channel_name = kwargs.get('channel_name', 'unknown_channel')
     if x_buffer is None:
         pass
     else:
         crop_kwargs['x_buffer'] = x_buffer
-        pass
     if y_buffer is None:
         pass
     else:
         crop_kwargs['y_buffer'] = y_buffer
     
     cellstack, cell_roi_df = cropped_stack_from_cellroidf(*crop_args, **crop_kwargs)
+    # Want to write cropped stack to same location it would be written if the cell
+    # were segmented manually
+    files.add_cell_channel_crop_stack_paths(cell_roi_df)
+    writepath_colname = f'{channel_name}_crop_stack_abspath'
+    writepath = cell_roi_df[writepath_colname].iloc[0]
     cell_index = cell_roi_df.cell_index.iloc[0]
-    crop_rois_path = cell_roi_df.crop_roi_set_path.iloc[0]
     compartment_name = cell_roi_df.compartment_name.iloc[0]
     exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
     compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
-    auto_compartment_name = f'{compartment_name}_auto'
     auto_compartment_dir = f'{compartment_dir}_auto'
-    crop_rois_path_mod = crop_rois_path.replace(compartment_name, auto_compartment_name)
     # Make a directory in which to save this next gen-generated cell
     # crop stack
     if not os.path.exists(auto_compartment_dir):
         os.mkdir(auto_compartment_dir)
-    stack_path = crop_rois_path_mod.replace('crop_rois.zip', 'crop.tif')
+    stack_path = writepath
+    # Need to make sure all frames have same dimensions before making
+    # cell crop stack into a numpy array
+    cellstack = check_cell_stack_dimensions(cellstack)
     cellstackarr = np.array(cellstack)
     if save_cell_stacks:
-        skimage.io.imsave(stack_path, cellstackarr)
+        # If a stack path exists, it was probably generated during manual 
+        # segmentation and should not be replaced
+        if os.path.exists(stack_path):
+            stack_path = stack_path.replace('.tif', '_auto.tif')
+        skimage.io.imsave(stack_path, cellstackarr, check_contrast=False)
         print(f'Saved cell {cell_index} crop tif at\n{stack_path}')
         
     return cellstackarr
@@ -626,7 +697,7 @@ def get_cell_stacks(crop_roi_dfs,
             source_stack_path = cellroidf.loc[:, path_colname].iloc[0]
             prev_source_stack_path = source_stack_path
             source_stack = skimage.io.imread(source_stack_path)
-            print(f'Read in {channel_name} image with shape {source_stack.shape} from/{source_stack_path}')
+            print(f'Read in {channel_name} image with shape {source_stack.shape} from\n{source_stack_path}')
         else:
             new_source_stack_path = cellroidf.loc[:, path_colname].iloc[0]
             if prev_source_stack_path == new_source_stack_path:
@@ -640,10 +711,11 @@ def get_cell_stacks(crop_roi_dfs,
                 source_stack]
         kwargs = {'x_buffer': x_buffer,
                   'y_buffer': y_buffer,
-                  'save_cell_stacks': save_cell_stacks}
+                  'save_cell_stacks': save_cell_stacks,
+                  'channel_name': channel_name}
 
         cell_stack = get_cell_crop_stack(*args, **kwargs)
-        cell_stacks_dict[str(cell_index)] = cell_stack
+        cell_stacks_dict[cell_index] = cell_stack
         cell_stacks.append(cell_stack)
     return cell_stacks, cell_stacks_dict
 
@@ -714,10 +786,20 @@ def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict,
     crop_rois_df.loc[:, 'intensity_avg'] = np.nan
     crop_rois_df.loc[:, 'peak_avg_intensity_radius'] = np.nan
 
-    for cell_index in crop_rois_df.cell_index.unique():
+    for i, cell_index in enumerate(list(crop_rois_df.cell_index.unique())):
+        print(f'Finding radial intensity peaks for cell {cell_index}')
         cell_bool = crop_rois_df.cell_index==cell_index
         cellroidf = crop_rois_df[cell_bool]
-        cellstack = cellstacksdict[str(cell_index)]
+        # If the keys for the cellstacksdict were set using
+        # string version of the cell index float from a df,
+        # need to use string version of cell_index gotten
+        # from the crop_rois_df itself which starts as a 
+        # float.
+        if type(list(cellstacksdict.keys())[i]) == str:
+            cellstack = cellstacksdict[str(cell_index)]
+        else:
+            cellstack = cellstacksdict[cell_index]
+        
 
         radii, intensities, peak_radii = [], [], []
         for frame_idx in cellroidf.frame_rel:
@@ -728,9 +810,13 @@ def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict,
                                                   x_center_rel,
                                                   y_center_rel)
 
-
-            peaks = find_peaks(intensity, height=np.array([300, None]))
-            peak_radius = peaks[0][peak_idx_to_use] - offset
+            peaks = find_peaks(intensity, height=np.array([100, None]))
+            if len(peaks[0]) > 1:
+                peak_radius = peaks[0][peak_idx_to_use] - offset
+            else:
+                print(f'No peaks found for frame {frame_idx}')
+                peak_radius = 7
+                print(f'Defaulting to {peak_radius} pixel radius')
             # Need to condense radius vs. intensity
             # into single row entries.
             joined_rad = '|'.join([str(rad_val) for rad_val in rad])
@@ -854,9 +940,13 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     return df
 
 def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
-    cellstack = stacksdict[str(cell_index)]
+    if type(list(stacksdict.keys())[cell_index]) == str:
+        cellstack = stacksdict[str(cell_index)]
+    else:
+        cellstack = stacksdict[cell_index]
     cell_bool = crop_rois_df.cell_index==cell_index
-    celldf = crop_rois_df[cell_bool].reset_index()
+    celldf = crop_rois_df[cell_bool]
+    celldf.index = range(len(celldf))
     dfs = []
     print(f'Finding peaks in intensity by radial dist and theta for cell {cell_index}')
     for frame_idx in celldf.frame_rel:
@@ -934,3 +1024,164 @@ def get_frame_cell_mask(allframesdf, measurement_stack, frame_idx):
 
         mask[theta_mask & dist_mask] = True
     return mask
+
+def get_mask(frame_img, frame_roi_df):
+    """
+    Create a boolean mask that contains only points in 
+    <frame_img> that are within the polygon outlined by
+    vertices in <frame_roi_df> columns x and y
+
+    Return mask, a boolean array with same shape as <frame_img>
+    """   
+
+    vert_x = frame_roi_df.x
+    vert_y = frame_roi_df.y
+
+    poly_verts = [(int(list(vert_x)[i]), int(list(vert_y)[i])) for i in range(len(vert_x))]
+
+    ny, nx = frame_img.shape
+    x, y = np.meshgrid(np.arange(nx), np.arange(ny))
+    x, y = x.flatten(), y.flatten()
+
+    points = np.vstack((x,y)).T
+
+    path = Path(poly_verts)
+    grid = path.contains_points(points)
+    grid = grid.reshape((ny,nx))
+
+    return grid
+
+def get_cell_channel_stack(
+    cellstackpath,
+    xystackpath,
+    outline_rois_path,
+    compartmentname,
+    cell_index,
+    cell_crop_rois_df,
+    channel
+    ):
+    """
+    Return the individual cell, channel crop stack found
+    or None if none found
+    """
+
+    if type(outline_rois_path) == str and os.path.exists(outline_rois_path):
+        print(f'Cell {compartmentname} cell{str(int(cell_index)).zfill(3)} was manually segmented')
+        auto_segmented = False
+    else:
+        print(f'Cell {compartmentname} cell{str(int(cell_index)).zfill(3)} was automatically segmented')
+        auto_segmented = True
+
+    # If autosegmented and cellstackpath exists, then we can read in the 
+    # cell crop stack made by cropping from constant width and height from
+    # center of crop ROI using byc.segmentation.get_cell_stacks()
+    if os.path.exists(cellstackpath) and auto_segmented:
+        print(f'Found auto cell crop stack at \n{cellstackpath}')
+        cellstack = skimage.io.imread(cellstackpath)
+        return cellstack
+    elif ~os.path.exists(cellstackpath) and auto_segmented:
+        print(f'Generating auto cropped channel stacks')
+        print(f'Checking for xy stack at\n{xystackpath}')
+        if os.path.exists(xystackpath):
+            print(f'Found xy stack')
+            cellstacks, cellstacksdict = get_cell_stacks([cell_crop_rois_df], channel_name=channel)
+            cellstack = cellstacksdict[cell_index]
+            return cellstack
+        else:
+            print(f'No xy stack found. Please download from backup')
+            return None
+    elif os.path.exists(cellstackpath) and ~auto_segmented:
+
+        print(f'Found manual cell crop stack at \n{cellstackpath}')
+        print(f'Creating auto cell crop stack')
+        print(f'Checking for xy stack at\n{xystackpath}')
+        if os.path.exists(xystackpath):
+            print(f'Found xy stack')
+            cellstacks, cellstacksdict = get_cell_stacks([cell_crop_rois_df], channel_name=channel)
+            cellstack = cellstacksdict[cell_index]
+            return cellstack
+        else:
+            print(f'No xy stack found. Please download from backup')
+            return None
+
+def get_cell_channel_stacks_from_fits_df(fits_df, cell_row_index):
+    """
+    Return a dictionary with keys (channel names) referring to
+    cell crop stacks for that channel for the cell found at 
+    cell_row_index in the <fits_df>. 
+    
+    Should be one cell per row in <fits_df>
+    """
+    rowdex = cell_row_index
+    mdf = fits_df.loc[rowdex, :]
+    cell_crop_rois_df = make_cell_roi_dfs(mdf, use_bycdataset=False)[0]
+
+    start_frame = mdf.chase_frame.astype(int)
+    outline_rois_path = mdf.measurement_rois_path
+    compartmentname = mdf.compartment_name
+    cell_index = mdf.cell_index
+    print(f'Getting cell channel stacks for {compartmentname}-cell{cell_index}')
+
+    cellstacksdict = {}
+    for channel in mdf.channels_collected.split():
+        cellstackpath_colname = f'{channel}_crop_stack_abspath'
+        cellstackpath = mdf[cellstackpath_colname]
+        print(f'Looking for {channel} cell stack at\n{cellstackpath}')
+        xystackpath_colname = f'{channel}_stack_path'
+        xystackpath = mdf[xystackpath_colname]
+        args = [
+            cellstackpath,
+            xystackpath,
+            outline_rois_path,
+            compartmentname,
+            cell_index,
+            cell_crop_rois_df,
+            channel
+        ]
+
+        cellchannelstack = get_cell_channel_stack(*args)
+        cellstacksdict[channel] = cellchannelstack
+
+    return cellstacksdict
+
+def get_cell_stacks_from_fits_df(fits_df, traces_df, **kwargs):
+    """
+    Return a dictionary with keys named after unique cells
+    found in <fits_df> referring to cellstacksdicts which 
+    have channel names referring to np.ndarray stacks for that
+    channel
+    """
+    plot_results = kwargs.get('plot_results', True)
+    return_stacksdict = True
+    fits_df.index = range(len(fits_df))
+    traces_df.index = range(len(traces_df))
+    fits_df.loc[:, 'compartment_cell'] = fits_df.compartment_name.str.cat(fits_df.cell_index.astype(int).astype(str), sep='-cell')
+    traces_df.loc[:, 'compartment_cell'] = traces_df.compartment_name.str.cat(traces_df.cell_index.astype(int).astype(str), sep='-cell')
+    # Add relevant path information for finding image stack files
+    relpath_colnames = [
+        'crop_roi_set_relpath',
+        'crop_active_imp_relpath'
+    ]
+    for col in relpath_colnames:
+        files.add_abspath_to_df(fits_df, colname=col)
+        
+    files.add_cell_channel_crop_stack_paths(fits_df, channels=['bf', 'yfp'])
+    files.add_cell_measurement_roi_paths(fits_df, channels=['bf', 'yfp'])
+    # Go through each cell in the fits_df and find a cropped
+    # channel stack for it
+    rowdexes = fits_df.index.unique()
+    stacksdict = {}
+    for rowdex in rowdexes:
+        row = fits_df.loc[rowdex, :]
+        label = row.compartment_cell
+        cellstacksdict = get_cell_channel_stacks_from_fits_df(fits_df, rowdex)
+        stacksdict[label] = cellstacksdict
+
+    if plot_results:
+        for cellkey in fits_df.compartment_cell.unique():
+            cellstacksdict = stacksdict[cellkey]
+            tracedf = traces_df[traces_df.compartment_cell==cellkey]
+            plotting.plot_cell_chase_stack(tracedf, cellstacksdict, cellkey, manual_contrast=False)
+
+    if return_stacksdict:
+        return stacksdict

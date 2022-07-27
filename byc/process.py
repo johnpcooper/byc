@@ -157,7 +157,7 @@ def translate_channels(channels_dict, offsets):
 
     return translated_channels
 
-def align_fov(fov_index, byc_image_set, write_output=True, rotate=False):
+def align_fov(fov_index, byc_image_set, write_output=True, rotate=False, **kwargs):
     """
     Pass this function an process.bycImageSet() instance which
     it will use to get data for the fov at fov_index, align
@@ -167,6 +167,7 @@ def align_fov(fov_index, byc_image_set, write_output=True, rotate=False):
 
     If write_output==False, return the translated channels_dict
     """
+    save_unaligned = kwargs.get('save_unaligned', False)
     channels = byc_image_set.fov_channels_dict(fov_index, byc_image_set.fov_dir_paths_dict)
     if rotate:
         # Find a good rotational offset and rotate images in each channel
@@ -202,6 +203,10 @@ def align_fov(fov_index, byc_image_set, write_output=True, rotate=False):
                 writepath = f'{base_writepath}_{channel_name.lower()}_stack.tif'
 
             tifffile.imsave(writepath, stack)
+            if save_unaligned:
+                unaligned_stack = skimage.util.img_as_uint(skimage.io.concatenate_images(rotated_channels[channel_name]))
+                tifffile.imsave(writepath.replace('stack.tif', 'unaligned_stack.tif'), unaligned_stack)
+
     else:
         return translated_channels
 
@@ -213,6 +218,7 @@ def align_byc_expt(**kwargs):
     """
     input_path = kwargs.get('input_path', None)
     write_output = kwargs.get('write_output', True)
+    save_unaligned = kwargs.get('save_unaligned', False)
 
     if input_path != None and os.path.exists(input_path):
         byc_image_set = bycImageSet(input_path)
@@ -223,7 +229,7 @@ def align_byc_expt(**kwargs):
 
     for fov_index in byc_image_set.fov_dir_paths_dict.keys():
         print(f'Aligning FOV {fov_index+1} of {len(byc_image_set.fov_dir_paths_dict.keys())}')
-        align_fov(fov_index, byc_image_set, write_output=write_output)
+        align_fov(fov_index, byc_image_set, write_output=write_output, save_unaligned=save_unaligned)
     print('Finished aligning')
 
 

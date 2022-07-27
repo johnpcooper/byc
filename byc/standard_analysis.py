@@ -29,24 +29,36 @@ class bycDataSet(object):
 
         # example gotten from one of byc.database.byc_database.master_index_dfs_dict.keys()
         example_compartment_name = '20200214_byc'
-        self.compartment_name = kwargs.get('compartment_name', None)
-        self.master_index_df = kwargs.get('mdf', None)
         if manual_select:
             # set the files that will be used for every cell analyzed
             self.master_index_df = self.select_master_index_df("Choose the .csv for the master index of this experiment")
         else:
-            # Use compartment name to fetch a master index df
-            # using database.byc_database.
-            # If no kwarg for compartment_name, look for a
-            # master index df object in kwargs as 'mdf'
-
-            if self.compartment_name != None:
-                self.master_index_df = database.byc_database.master_index_dfs_dict[self.compartment_name]
-                self.master_index_df = self.clean_master_index_df(self.master_index_df)
+            self.master_index_df = kwargs.get('mdf', None)
 
         # Read in data for each cell in the master index, add proper
         # time column and other annotations from the master index df
         self.cell_trace_dfs = self.make_cell_trace_dfs(self.master_index_df)
+        self.compartment_name = kwargs.get('compartment_name', self.get_compartment_name())
+        self.compartment_dir = self.get_compartment_dir()
+
+    def get_compartment_name(self, **kwargs):
+        mdf = kwargs.get('mdf', self.master_index_df)
+        if type(mdf) == pd.core.series.Series:
+            compartment_name = mdf.compartment_name
+        else:
+            compartment_name = mdf.compartment_name.iloc[0]
+        return compartment_name
+
+    def get_compartment_dir(self, **kwargs):
+        mdf = kwargs.get('mdf', self.master_index_df)
+
+        if type(mdf) == pd.core.series.Series:        
+            compartment_dir = os.path.join(constants.byc_data_dir,
+                                        mdf.compartment_reldir)
+        else:
+            compartment_dir = os.path.join(constants.byc_data_dir,
+                                        mdf.compartment_reldir.iloc[0])
+        return compartment_dir
 
     def set_fp(self, prompt):
         """
@@ -101,7 +113,8 @@ class bycDataSet(object):
         base_filename = f'{cellrow.date}_byc_xy{str(cellrow.xy).zfill(2)}_cell{str(cellrow.cell_index).zfill(3)}'
         pattern = f'({base_filename})_(.+)_(stack.csv)'
         measurement_dfs = []
-        for dirpath, dirnames, filenames in os.walk(cellrow.compartment_dir):   
+        compartment_dir = os.path.join(constants.byc_data_dir, cellrow.compartment_reldir)
+        for dirpath, dirnames, filenames in os.walk(compartment_dir):   
             matches = []
             for filename in filenames:
                 match = re.search(pattern, filename)
@@ -119,8 +132,9 @@ class bycDataSet(object):
                     # because I don't want the time columns to get
                     # labelled with '_<channel_name>'
                     hours = ((df.Slice-1)*collection_interval)/60
-                    print(f"Looking for crop ROIs at {cellrow.crop_roi_set_path}")
-                    rois = read_roi_zip(cellrow.crop_roi_set_path)
+                    crop_roi_set_path = os.path.join(constants.byc_data_dir, cellrow.crop_roi_set_relpath)
+                    print(f"Looking for crop ROIs at {crop_roi_set_path}")
+                    rois = read_roi_zip(crop_roi_set_path)
                     first_position = rois[list(rois.keys())[0]]['position']
                     first_position_ind = first_position - 1
                     abs_hours = ((df.Slice-1+first_position_ind)*collection_interval)/60
@@ -180,27 +194,80 @@ class bycDataSet(object):
         print(f'Created cell_df with length {len(cell_df)}')
         return cell_df
 
-    def make_cell_trace_dfs(self, master_index_df):
-        """
-        Use make_cell_df() to look up and aggregate
-        fluorescent channel trace data for each cell
-        recorded in the provied master index
+    # def make_cell_trace_dfs(self, master_index_df):
+    #     """
+    #     Use make_cell_df() to look up and aggregate
+    #     fluorescent channel trace data for each cell
+    #     recorded in the provied master index
         
-        Return a list of these dataframes
-        """
-        mdf = master_index_df
-        cell_dfs = []
-        for i in mdf.index:
-            cellrow = mdf.loc[i, :]
-            if len(cellrow.shape) > 1:
-                print(f'Multiple entries for cell at row {i}')
-                pass
-            else:
-                cell_index = cellrow.cell_index
-                cell_df = self.make_cell_trace_df(mdf, cell_index)
-                cell_dfs.append(cell_df)
+    #     Return a list of these dataframes
+    #     """
+    #     mdf = master_index_df
+    #     cell_dfs = []
+    #     for i in mdf.index:
+    #         cellrow = mdf.loc[i, :]
+    #         if len(cellrow.shape) > 1:
+    #             print(f'Multiple entries for cell at row {i}')
+    #             pass
+    #         else:
+    #             cell_index = cellrow.cell_index
+    #             cell_df = self.make_cell_trace_df(mdf, cell_index)
+    #             cell_dfs.append(cell_df)
         
-        return cell_dfs
+    #     return cell_dfs
+
+    def make_cell_trace_dfs(self, mdf, **kwargs):
+        """
+        
+        """
+        if len(mdf.cell_index.unique()) == len(mdf.cell_index):
+            pass
+        else:
+            print(f'There are multiple entries for the same cell in the master index')
+                
+            return None
+        channel = kwargs.get('channel', 'yfp')
+        col_name = f'{channel}_df_path'
+        mdf.loc[:, col_name] = np.nan
+        compartmentname = mdf.compartment_name.iloc[0]
+        date = compartmentname[0:8]
+        exptname = f'{date}_byc'
+        kwargs = {'return_exptdir': True}
+        exptdir, compdir = files.get_byc_compartmentdir(exptname, compartmentname, **kwargs)
+
+        filenames = os.listdir(compdir)
+        csvs = [f for f in filenames if f[-4:] == '.csv']
+        measurement_csvs = [csv for csv in csvs if f'{channel}_stack' in csv]
+        measurement_csv_paths = [os.path.join(compdir, name) for name in measurement_csvs]
+
+        trace_dfs = []
+        for cell_index in mdf.cell_index:
+            
+            pattern = f'cell{str(cell_index).zfill(3)}'
+            candidates = [re.search(pattern, path) for path in measurement_csv_paths]
+            matches = [candidate for candidate in candidates if candidate != None]
+            
+            if len(matches) == 1:
+                path = matches[0].string
+                mdf.loc[cell_index, col_name] = path
+                trace_df = pd.read_csv(path)
+                trace_df.rename(columns={'Mean': f'Mean_{channel}'}, inplace=True)
+                for col in mdf.columns:
+                    if col not in list(trace_df.columns):
+                        trace_df.loc[:, col] = np.nan
+                        new_val = mdf.loc[cell_index, col]
+                        trace_df.loc[:, col] = new_val
+                        
+                trace_dfs.append(trace_df)
+                
+            elif len(matches) > 1:
+                print(f'Multiple measurement dfs for cell {cell_index} {channel} channel')
+                for match in matches:
+                    print(match.string)
+            elif len(matches) == 0:
+                print(f'No measurement dfs for cell {cell_index} {channel} channel in compartment dir {compdir}')
+
+        return trace_dfs
 
 def set_file_paths(prompt):
     # create the dialog box and set the fn
@@ -285,62 +352,92 @@ def annotate_absolute_time(cell_trace_df, mdf, time_delta_mins=10):
     Return the absolute time annotated <cell_trace_df>
     """
 
+def add_first_crop_frame(mdf):
+    """
+    For each entry in the mdf, read in that cell's crop roi set
+    as a dataframe and mark 
+    
+    Return the annotated mdf
+    """
+    mdf.loc[:, 'first_crop_frame'] = np.nan
+    # Just in case the master index df has a different
+    # cell index order
+    for idx in mdf.index:
+        cell_index = mdf.loc[idx, 'cell_index']
+        crop_roi_set_relpath = mdf[mdf.cell_index==cell_index].crop_roi_set_relpath.iloc[0]
+        crop_roi_set_path = os.path.join(constants.byc_data_dir, crop_roi_set_relpath)
+        print(f'Looking for crop roi set path for cell {cell_index} at \n{crop_roi_set_path}')
+        crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
+        first_crop_roi_pos = crop_roi_df.loc[0, 'position']
+        mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_pos - 1
+        
+    return mdf
 
-def annotate_buds(mdf, buds_mdf, abs_chase_frame, return_bud_roi_df=False):
+
+def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
 
     mdf.loc[:, 'bud_roi_set_path'] = np.nan
     mdf.loc[:, 'rls'] = np.nan
     mdf.loc[:, 'dist_from_sen'] = np.nan
     mdf.loc[:, 'age_at_chase'] = np.nan
-    mdf.loc[:, 'first_crop_frame'] = np.nan
+
+    if len(mdf) != len(buds_mdf):
+        print('Warning, mdf and buds_mdf not the same length')
+        return None
+    else:
+        pass
     bud_dfs = []
     for idx in buds_mdf.index:
-        bud_roi_set_path = buds_mdf.bud_roi_set_path[idx]
+        bud_roi_set_path = buds_mdf.bud_roi_set_relpath[idx]
+        bud_roi_set_path = os.path.join(constants.byc_data_dir, bud_roi_set_path)
         cell_index = buds_mdf.cell_index[idx]
-        # Just in case the master index df has a different
-        # cell index order
-        crop_roi_set_relpath = mdf[mdf.cell_index==cell_index].crop_roi_set_relpath.iloc[0]
-        crop_roi_set_path = os.path.join(constants.byc_data_dir, crop_roi_set_relpath)
+        print(f'Annotating bud appearance frames for cell {cell_index}')
+        abs_chase_frame = mdf[mdf.cell_index==cell_index].abs_chase_frame.iloc[0]
+        print(f'Found absolute chase frame of {abs_chase_frame}')
         # Need to define death offset because if death was observed, the last
         # annotated 'bud' frame is actually the last frame before death, not
         # a budding event
         if buds_mdf.loc[idx, 'end_event_type'] == 'death':
             death_offset = 1
-            print(f'death observed for cell {idx}')
+            print(f'death observed for cell {cell_index}')
         elif buds_mdf.loc[idx, 'end_event_type'] == 'sen':
             death_offset = 0
-            print(f'Death not observed for cell {idx}')
+            print(f'Death not observed for cell {cell_index}')
         elif buds_mdf.loc[idx, 'end_event_type'] == 'escape':
             death_offset = 0
-        if os.path.exists(bud_roi_set_path) and os.path.exists(crop_roi_set_path):
+        if os.path.exists(bud_roi_set_path):
             mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
+            print(f'Read in bud_roi_set at\n{bud_roi_set_path}')
             bud_roi_df = files.read_rectangular_rois_as_df(bud_roi_set_path)
-            crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
             bud_roi_df.loc[:, 'frame'] = bud_roi_df.position - 1
             age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=abs_chase_frame, :])
             dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>abs_chase_frame, :]) - death_offset
+            print(f'Gen. from senescence = {dist_from_sen}')
             rls = len(bud_roi_df) - death_offset
             # Annotate master index df with cell survival, first bud roi,
             # distance from senescence at start of chase, etc.
             mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
             mdf.loc[idx, 'rls'] = rls
             mdf.loc[idx, 'dist_from_sen'] = dist_from_sen
+            print(f'Set value for dist_from_sen {dist_from_sen}')
             mdf.loc[idx, 'age_at_chase'] = age_at_chase
             first_bud_roi_pos = bud_roi_df.loc[0, 'position']
-            first_crop_roi_pos = crop_roi_df.loc[0, 'position']
             mdf.loc[idx, 'first_bud_frame'] = first_bud_roi_pos - 1
-            mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_pos - 1
             bud_roi_df.loc[:, 'cell_index'] = cell_index
             bud_dfs.append(bud_roi_df)
+
+            print(f"Final dist from sen={mdf.loc[idx, 'dist_from_sen']}")
         else:
             print(f'No bud roi set found at:\n{bud_roi_set_path}')
             print(f'No crop roi set found at:\n{crop_roi_set_path}')
     if return_bud_roi_df:
+        print(f'Returning mdf and bud_mdf')
         return (mdf, pd.concat(bud_dfs, ignore_index=True))
+        
     else:
         return mdf
 
-def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp'):
+def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp', **kwargs):
     """
     Normalize <yvar> column in <cell_trace_df> to y value
     at t0 as define by <chase_frame> value found in 
@@ -349,21 +446,30 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp'):
     
     Return <cell_trace_df> with the new y_norm column
     """
+    norm_col_name = kwargs.get('norm_col_name', None)
+    delta_t = kwargs.get('delta_t', 10)
     tracedf = cell_trace_df
-    chase_frame = tracedf.chase_frame.iloc[0]
+    chase_frame = int(tracedf.chase_frame.iloc[0])
     tracedf.loc[:, f'{yvar}_bg_sub'] = np.nan
     tracedf.loc[:, f'{yvar}_bg_sub'] = tracedf[yvar] - tracedf[yvar].min()
     yt0 = tracedf.loc[chase_frame, f'{yvar}_bg_sub']
     y_norm = tracedf[f'{yvar}_bg_sub']/yt0
-    yvar_name = yvar[-3:]
-    norm_col_name = f'{yvar_name}_norm'
+    if norm_col_name is None:
+        yvar_name = yvar[-3:]
+        norm_col_name = f'{yvar_name}_norm'
     tracedf.loc[:, norm_col_name] = np.nan
     tracedf.loc[:, norm_col_name] = y_norm
+    if 'frame_rel' not in list(tracedf.columns):
+        try:
+            tracedf.loc[:, 'frame_rel'] = tracedf.Slice_bf - 1
+        except:
+            tracedf.loc[:, 'frame_rel'] = tracedf.Slice - 1
+    tracedf.loc[:, 'hours'] = (tracedf.frame_rel*delta_t)/60
+    tracedf.loc[:, 'hours_rel'] = tracedf.hours - (chase_frame*delta_t)/60
     
     return cell_trace_df
 
 def create_and_annotate_mdf(exptname, compartmentname,
-                            chase_frame, chase_roi_start_frame,
                             **kwargs):
     """
     Look in the compartmentdir found using <exptname> and
@@ -374,36 +480,55 @@ def create_and_annotate_mdf(exptname, compartmentname,
     # Allow user to pass an mdf that may have been manually
     # edited etc.
     mdf = kwargs.get('mdf', None)
+    add_buds_to_mdf = kwargs.get('add_buds_to_mdf', True)
     savepath =kwargs.get('savepath', None)
     savemdf = kwargs.get('savemdf', True)
     channels = kwargs.get('channels_collected', 'bf yfp')
     age_state = kwargs.get('age_state', 'old')
-    abs_chase_frame = chase_frame + chase_roi_start_frame
-    mdf_type = 'crop_rois'
-    file_pattern = constants.patterns.crop_roi_df_file
+    chase_frame_dict = kwargs.get('chase_frame_dict', None)
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
     print(f'Found compartment directory:\n{compartmentdir}')
     if mdf is None:
+        mdf_type = 'crop_rois'
+        file_pattern = constants.patterns.crop_roi_df_file
         mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
     else:
         print(f"Using user defined mdf and savepath")
-    mdf.loc[:, 'chase_frame'] = chase_frame
-    mdf.loc[:, 'abs_chase_frame'] = abs_chase_frame
+    mdf = add_first_crop_frame(mdf)
+    # Annotate when the chases start
+    mdf.loc[:, 'chase_frame'] = np.nan
+    mdf.loc[:, 'abs_chase_frame'] = np.nan
+    if chase_frame_dict is None:
+        print('Please pass a chase_frame_dict with {<first_crop_frame>: <chase_frame>}')
+        return None
+    else:
+        for first_frame, chase_frame in chase_frame_dict.items():
+            abs_chase_frame = chase_frame + first_frame
+            mdf.loc[mdf.first_crop_frame==first_frame, 'abs_chase_frame'] = abs_chase_frame
+            mdf.loc[mdf.first_crop_frame==first_frame, 'chase_frame'] = chase_frame
+
     mdf.loc[:, 'compartment_name'] = compartmentname
     mdf.loc[:, 'channels_collected'] = channels
     mdf.loc[:, 'age_state'] = age_state
+
     # Add paths to cell tracking ROIs
     mdf = files.path_annotate_master_index_df(mdf)
+    if len(mdf) > 0:
+        print(f'Successfully path annotated master index')
     # Create buds master index using bud roi dfs found
     # in compartment directory, use them to annotate the
     # master index created above
+    print(f'Attempting to annotate bud information')
     mdf_type = 'bud_rois'
     file_pattern = constants.patterns.bud_roi_df_file
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
     print(f'Found compartment directory:\n{compartmentdir}')
     bud_mdf = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type, return_savepath=False)
-
-    mdf = annotate_buds(mdf, bud_mdf, abs_chase_frame)
+    if add_buds_to_mdf:
+        mdf = annotate_buds(mdf, bud_mdf)
+    else:
+        print(f'Not annotating budding events on master index')
+    # print(mdf.dist_from_sen.unique())
     if savemdf:
         mdf.to_csv(savepath)
         print(f'Saved annotated master index df at:\n{savepath}')
@@ -427,3 +552,58 @@ def filter_low_dynamic_range_cells(trace_dfs, threshold, **kwargs):
 
     print(f'Kept {len(filtered_trace_dfs)} of {len(trace_dfs)}')
     return filtered_trace_dfs
+
+def make_fits_table(fits_df, **kwargs):
+    """
+    """
+    # Drop cells that are clearly bad data based on above plots
+    drops = kwargs.get('drops_cell_indices', [])
+    agg_idx_temp = ['age_at_chase',
+               'rls',
+               'dist_from_sen',
+               'first_bud_frame',
+               'cell_index']
+    # agg_idx_temp = list(fits_df.columns)
+    agg_idx = kwargs.get('agg_idx', agg_idx_temp)
+    fits_df = fits_df[~(fits_df.cell_index.isin(drops))].reset_index()
+    
+    fits_table = pd.pivot_table(index=agg_idx, data=fits_df).reset_index()
+    
+    return fits_table
+
+def merge_dfs(df1, df2, **kwargs):
+    """
+    Take two dataframes, <df1> usually a master_index_df,
+    <df2> usually a fits table, and add all data from df1
+    to df2 that's not already in df2. 
+
+    Unique cells identified by 'cell_index' and 'dist_from_sen'.
+    In current byc data sets, a new 'cell_index' only means
+    trace index. Cell 20 and 21 could be same cell chase at
+    different timepoints. They can be identified as the same
+    cell using their set of bud appearance timepoints
+
+    In older datasets (e.g. 20210430), I was creating a young and
+    old compartmentdir to distinguish different chase timepoints
+    for the same cell which created a mess
+
+    Return df2
+    """
+    idx = kwargs.get('idx', ['cell_index', 'dist_from_sen'])
+    df1.set_index(idx, inplace=True, drop=False)
+    df2.set_index(idx, inplace=True, drop=False)
+    notfounds = []
+    for cell_dist_dex in df2.index:
+        if cell_dist_dex in list(df1.index):
+            for col in df1.columns:
+                if col not in df2.columns:
+                    df2.loc[:, col] = np.nan
+                value = df1.loc[cell_dist_dex, col]
+                df2.loc[cell_dist_dex, col] = value
+        else:
+            print(f'Cell with index, dist_from_sen {cell_dist_dex} not in mdf')
+            notfounds.append(1)
+    print(f'Did not find {len(notfounds)} of {len(df2)} in <df1>')
+    df2.index = range(0, len(df2))
+    df1.reset_index(inplace=True, drop=True)
+    return df2

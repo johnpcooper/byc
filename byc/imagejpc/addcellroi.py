@@ -1,6 +1,6 @@
 """
 This script gets run by imagejpc/macros/addCell.ijm
-as part of the plugini imagejpc/utilities/save_cell_roi_set.py"
+as part of the plugin imagejpc/utilities/save_cell_roi_set.py"
 
 Might also add byc.database.dataBase integration at some point
 """
@@ -9,7 +9,7 @@ import os
 import pandas as pd
 import sys
 
-from byc import constants, database, utilities
+from byc import constants, utilities
 
 def find_cell_row(cell_roi_df, master_index_df):
     """
