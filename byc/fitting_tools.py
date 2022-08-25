@@ -27,6 +27,16 @@ def logistic(x, L, k, x_center, offset):
     y = L/(1 + np.exp(-1*k*(x - x_center))) + offset
     return y
 
+def sigmoid(x, L ,x0, k, b):
+    """
+    Standard usage in fitting:
+
+    p0 = [max(y), np.median(x),1,min(y)] # this is an mandatory initial guess
+    popt, pcov = curve_fit(fitting_tools.sigmoid, x, y,p0, method='dogbox')
+    """
+    y = L / (1 + np.exp(-k*(x-x0))) + b
+    return (y)
+
 def get_r_squared(y, y_pred):
     """
     Return R-squared as float defined as:
@@ -89,7 +99,8 @@ def get_shapiro_p(residuals):
     return shapiro_p
 
 def exp_fit(cell_df, start_frame, fit_func=single_exp,
-            col_name='yfp_norm', background_subtract=True, **kwargs):
+            col_name='yfp_norm', background_subtract=True,
+            transfer_all_cell_df_information=True, **kwargs):
     """
     Fit a single or double exponential function to the data in cell_df.col_name.
     X axis is cell_df.hours[0:end_frame - startframe]
@@ -104,25 +115,30 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
     background_x_limit = kwargs.get('background_limit', 30)
     x_var = kwargs.get('x_var', 'hours')
     # Check if these explanatory variables are annotated in the cell_df
-    expl_var_names = kwargs.get('expl_var_names', None)
-    if expl_var_names == None:
-        expl_var_names = ['cell_index',
-                          'age_at_chase',
-                          'rls',
-                          'div_duration',
-                          'dist_from_sen',
-                          'late_daughter_shape',
-                          'first_bud_frame']
-    expl_vars_values = []
-    for expl_var_name in expl_var_names:
-        try:
-            expl_var_value = cell_df[expl_var_name].iloc[0]
-        except:
-            expl_var_value = np.nan
+    if not transfer_all_cell_df_information:
+        expl_var_names = kwargs.get('expl_var_names', None)
+        if expl_var_names == None:
+            expl_var_names = ['cell_index',
+                            'age_at_chase',
+                            'rls',
+                            'div_duration',
+                            'dist_from_sen',
+                            'late_daughter_shape',
+                            'first_bud_frame']
+        expl_vars_values = []
+        for expl_var_name in expl_var_names:
+            try:
+                expl_var_value = cell_df[expl_var_name].iloc[0]
+            except:
+                expl_var_value = np.nan
 
-        expl_vars_values.append(expl_var_value)
-
-    params_dict = dict(zip(expl_var_names, expl_vars_values))
+            expl_vars_values.append(expl_var_value)
+            params_dict = dict(zip(expl_var_names, expl_vars_values))
+    else:
+        params_dict = {}
+        expl_var_names = list(cell_df.columns)
+        for expl_var_name in expl_var_names:
+            params_dict[expl_var_name] = cell_df.loc[cell_df.index[0], expl_var_name]
 
     # Background substract the cell_df column to be fit
     end_frame = start_frame + window_width  

@@ -201,5 +201,15 @@ def get_all_master_index_dfs(**kwargs):
     dfs = [pd.read_csv(path) for path in master_index_paths if pd.read_csv(path).empty == False]
     return dfs
 
+def exptname_from_compartment(compartmentdir_or_name):
+    """
+    Find experiment name (e.g. '20220610_byc') in <compartmentdir_or_name>
+    as long as <compartmentdir_or_name> is in format:
+    <DATE>_byc_<expt_details_etc>
+    """
+    splitname = compartmentdir_or_name.split('_')
+    exptname = '_'.join(splitname[0:2])
+
+    return exptname
 
 

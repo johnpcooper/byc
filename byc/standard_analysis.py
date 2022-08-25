@@ -376,6 +376,8 @@ def add_first_crop_frame(mdf):
 
 def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
 
+    default_chase_frame = 150
+
     mdf.loc[:, 'bud_roi_set_path'] = np.nan
     mdf.loc[:, 'rls'] = np.nan
     mdf.loc[:, 'dist_from_sen'] = np.nan
@@ -392,8 +394,15 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
         bud_roi_set_path = os.path.join(constants.byc_data_dir, bud_roi_set_path)
         cell_index = buds_mdf.cell_index[idx]
         print(f'Annotating bud appearance frames for cell {cell_index}')
-        abs_chase_frame = mdf[mdf.cell_index==cell_index].abs_chase_frame.iloc[0]
-        print(f'Found absolute chase frame of {abs_chase_frame}')
+        if 'abs_chase_frame' in mdf.columns:
+            # If not here, this is probably just a bud ROIs master index
+            # so just make up a number since it won't be relevant for these
+            # data 
+            abs_chase_frame = mdf[mdf.cell_index==cell_index].abs_chase_frame.iloc[0]
+            print(f'Found absolute chase frame of {abs_chase_frame}')
+        else:
+            abs_chase_frame = default_chase_frame
+            print(f'No abs_chase_frame column found, using default value of frame {abs_chase_frame}')
         # Need to define death offset because if death was observed, the last
         # annotated 'bud' frame is actually the last frame before death, not
         # a budding event
@@ -489,9 +498,18 @@ def create_and_annotate_mdf(exptname, compartmentname,
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
     print(f'Found compartment directory:\n{compartmentdir}')
     if mdf is None:
-        mdf_type = 'crop_rois'
-        file_pattern = constants.patterns.crop_roi_df_file
-        mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+        try:
+            mdf_type = 'crop_rois'
+            file_pattern = constants.patterns.crop_roi_df_file
+            mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+        except Exception as E:
+            print(f'Could not generate a master index df using {mdf_type} csvs\n')
+            mdf_type = 'bud_rois'
+            file_pattern = constants.patterns.bud_roi_df_file
+            mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+            mdf.loc[:, 'compartment_name'] = compartmentname
+            mdf = annotate_buds(mdf, mdf)
+            return mdf
     else:
         print(f"Using user defined mdf and savepath")
     mdf = add_first_crop_frame(mdf)

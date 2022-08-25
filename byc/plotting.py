@@ -89,6 +89,8 @@ def figure_ax(**kwargs):
     
     ax = fig.add_subplot(111)
 
+    remove_spines(ax)
+
     return fig, ax
 
 def legend_outside():

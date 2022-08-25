@@ -655,8 +655,6 @@ def get_cell_crop_stack(cell_roi_df,
     auto_compartment_dir = f'{compartment_dir}_auto'
     # Make a directory in which to save this next gen-generated cell
     # crop stack
-    if not os.path.exists(auto_compartment_dir):
-        os.mkdir(auto_compartment_dir)
     stack_path = writepath
     # Need to make sure all frames have same dimensions before making
     # cell crop stack into a numpy array
@@ -665,10 +663,11 @@ def get_cell_crop_stack(cell_roi_df,
     if save_cell_stacks:
         # If a stack path exists, it was probably generated during manual 
         # segmentation and should not be replaced
-        if os.path.exists(stack_path):
-            stack_path = stack_path.replace('.tif', '_auto.tif')
-        skimage.io.imsave(stack_path, cellstackarr, check_contrast=False)
-        print(f'Saved cell {cell_index} crop tif at\n{stack_path}')
+        if not os.path.exists(stack_path):
+            skimage.io.imsave(stack_path, cellstackarr, check_contrast=False)
+            print(f'Saved cell {cell_index} crop tif at\n{stack_path}')
+        else:
+            print(f'Not overwriting stack found at\n{stack_path}')
         
     return cellstackarr
 
@@ -795,7 +794,7 @@ def find_radial_avg_intensity_peaks(crop_rois_df, cellstacksdict,
         # need to use string version of cell_index gotten
         # from the crop_rois_df itself which starts as a 
         # float.
-        if type(list(cellstacksdict.keys())[i]) == str:
+        if type(list(cellstacksdict.keys())[0]) == str:
             cellstack = cellstacksdict[str(cell_index)]
         else:
             cellstack = cellstacksdict[cell_index]
@@ -894,7 +893,7 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
 
     return df
 
-def polar_intensity_peaks(polar_intensity_df, **kwargs):
+def polar_intensity_peaks(polar_intensity_df, mean_center=False, **kwargs):
     """
     For each theta value in polar_intensity_df, find peaks
     in intensity at varying radial_distance from center. 
@@ -905,7 +904,8 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     byc.segmentation.intensity_by_distance_and_theta
     """
     # Number of pixels to add to distance at which
-    # peak was found
+    # peak was found. Helps make sure we're staying
+    # inside the cell and not overlapping with other cells
     peak_dist_offset = kwargs.get('peak_offset', -4)
     peak_height_threshold = kwargs.get('peak_height_threshold', 100)
     medfilt_kern_size = kwargs.get('medfilt_kern_size', 7)
@@ -914,9 +914,12 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     df.loc[:, 'peak_Y'] = np.nan
     x_center = df.x_center_rel.iloc[0]
     y_center = df.y_center_rel.iloc[0]
-
+    if mean_center:
+        print(f'Finding peaks using mean centered abs value of intensity trace')
     for t in df.theta.unique():
         intensity = df.loc[df.theta == t, 'intensity']
+        if mean_center:
+            intensity = np.abs(intensity - np.mean(intensity))
         intensity_medfilt = medfilt(intensity, kernel_size=medfilt_kern_size)
         peaks = find_peaks(intensity,
                            height=np.array([peak_height_threshold, None]))
@@ -929,7 +932,6 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
             if highest_peak_dist_adj <= 0:
                 highest_peak_dist_adj = 1
             df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj
-
             df.loc[df.theta==t, 'first_peak_dist'] = first_peak
             # Add cartesian coordinates for max amplitude peak found
             df.loc[df.theta==t, 'peak_X'] = highest_peak_dist_adj*np.cos(t) + x_center
@@ -940,7 +942,7 @@ def polar_intensity_peaks(polar_intensity_df, **kwargs):
     return df
 
 def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
-    if type(list(stacksdict.keys())[cell_index]) == str:
+    if type(list(stacksdict.keys())[0]) == str:
         cellstack = stacksdict[str(cell_index)]
     else:
         cellstack = stacksdict[cell_index]
