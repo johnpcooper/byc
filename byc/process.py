@@ -59,7 +59,7 @@ class bycImageSet(object):
         fov_dir_paths_dict = dict(zip(fov_indices, fov_dir_paths))
         return fov_dir_paths_dict
     
-    def fov_channels_dict(self, fov_index, fov_dir_paths_dict):
+    def fov_channels_dict(self, fov_index, fov_dir_paths_dict, crop_frames=True, start_pixel_x=None, fraction=0.55):
         """
         Return fov_channels_dict: keys are channel
         names found in display_and_comments and elements
@@ -74,6 +74,24 @@ class bycImageSet(object):
         for channel in self.channel_names:
             channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if channel in fn]
             fov_channels_dict[channel] = [skimage.io.imread(path) for path in channel_paths]
+        # Crop out data outside the middle half of each frame because
+        # there are no cells there and we want as lean a dataset as possible
+        if crop_frames == True:
+            for key in fov_channels_dict.keys():
+                stack = fov_channels_dict[key]
+                frame0 = stack[0]
+                total_width = frame0.shape[1]
+                crop_width = int(np.round(total_width*fraction))
+                
+                if start_pixel_x == None:
+                    start = int(np.round((total_width - crop_width)/2))
+                else:
+                    start = int(start_pixel_x)
+                end = start + crop_width
+                print(f'Cropping x axis to keep pixels {start} through {end} of total width {total_width}')
+                cropped_stack = [frame[:, start:end] for frame in stack]
+                fov_channels_dict[key] = cropped_stack
+
         
         return fov_channels_dict
 
