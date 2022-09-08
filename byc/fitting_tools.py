@@ -225,8 +225,8 @@ def get_all_fits_df(dfs_list, start_frame, window_size,
         print(f'Fitting cell with index {cell_index}')
         # If the user passes None as start_frame, determine start
         # frame from chase_frame colum in cell df
-        if start_frame is None:
-            start_frame = int(dfs_list[i]['chase_frame'].unique()[0])
+        start_frame = int(dfs_list[i]['chase_frame'].unique()[0])
+        print(f'Using start frame {start_frame} for fit')
         try:
             fit_params_dict = exp_fit(dfs_list[i], start_frame,
                                       fit_func=fit_func, col_name=col_name,
