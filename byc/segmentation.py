@@ -856,8 +856,8 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     intensity at a range of theta, radial distance polar
     coordinates
     """
-    distance_max = kwargs.get('distance_max', 20)
-    distance_min = kwargs.get('distance_min', 0)
+    distance_max = kwargs.get('distance_max', 25)
+    distance_min = kwargs.get('distance_min', 7)
     theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
     dist_bin_size = kwargs.get('dist_bin_size', 1)
     thetas = np.arange(-np.pi, np.pi, theta_bin_size)
@@ -891,9 +891,18 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     df.loc[:, 'x_center_rel'] = x_center
     df.loc[:, 'y_center_rel'] = y_center
 
+    df.loc[:, 'peak_dist_offset'] = distance_min
+
     return df
 
-def polar_intensity_peaks(polar_intensity_df, mean_center=False, **kwargs):
+def polar_intensity_peaks(
+    polar_intensity_df,
+    mean_center=False,
+    use_first_peak=True,
+    use_constant_circle_roi=False,
+    default_radius_px=12,
+    **kwargs
+    ):
     """
     For each theta value in polar_intensity_df, find peaks
     in intensity at varying radial_distance from center. 
@@ -906,42 +915,87 @@ def polar_intensity_peaks(polar_intensity_df, mean_center=False, **kwargs):
     # Number of pixels to add to distance at which
     # peak was found. Helps make sure we're staying
     # inside the cell and not overlapping with other cells
-    peak_dist_offset = kwargs.get('peak_offset', -4)
-    peak_height_threshold = kwargs.get('peak_height_threshold', 100)
-    medfilt_kern_size = kwargs.get('medfilt_kern_size', 7)
+    use_median_filtered_intensity = True
+    peak_dist_offset = kwargs.get('peak_offset', -2)
+    peak_height_threshold = kwargs.get('peak_height_threshold', 2000)
+    medfilt_kern_size = kwargs.get('medfilt_kern_size', 3)
     df = polar_intensity_df
     df.loc[:, 'peak_X'] = np.nan
     df.loc[:, 'peak_Y'] = np.nan
     x_center = df.x_center_rel.iloc[0]
     y_center = df.y_center_rel.iloc[0]
-    if mean_center:
-        print(f'Finding peaks using mean centered abs value of intensity trace')
+    
+    found_previous_peak = False
+
     for t in df.theta.unique():
-        intensity = df.loc[df.theta == t, 'intensity']
-        if mean_center:
-            intensity = np.abs(intensity - np.mean(intensity))
-        intensity_medfilt = medfilt(intensity, kernel_size=medfilt_kern_size)
-        peaks = find_peaks(intensity,
-                           height=np.array([peak_height_threshold, None]))
-        # Make sure peaks were found before trying to add them to the dataframe
-        if len(peaks[0]) > 0:
-            highest_peak_index = np.argmax(peaks[1]['peak_heights'])
-            highest_peak_dist = peaks[0][highest_peak_index] + 1
-            first_peak = peaks[0][0] + 1
-            highest_peak_dist_adj = highest_peak_dist + peak_dist_offset
-            if highest_peak_dist_adj <= 0:
-                highest_peak_dist_adj = 1
-            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj
-            df.loc[df.theta==t, 'first_peak_dist'] = first_peak
+        if use_constant_circle_roi:
+            highest_peak_dist_adj = default_radius_px
             # Add cartesian coordinates for max amplitude peak found
-            df.loc[df.theta==t, 'peak_X'] = highest_peak_dist_adj*np.cos(t) + x_center
-            df.loc[df.theta==t, 'peak_Y'] = highest_peak_dist_adj*np.sin(t) + y_center
+            df.loc[df.theta==t, 'first_peak_dist'] = highest_peak_dist_adj
+            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj        
+            peak_X = highest_peak_dist_adj*np.cos(t) + x_center
+            peak_Y = highest_peak_dist_adj*np.sin(t) + y_center        
+            df.loc[df.theta==t, 'peak_X'] = peak_X
+            df.loc[df.theta==t, 'peak_Y'] = peak_Y
         else:
-            print(f'No peaks found at {t} radians')
+            intensity = df.loc[df.theta == t, 'intensity']
+            if mean_center:
+                intensity = np.abs(intensity - np.mean(intensity))
+            if use_median_filtered_intensity:
+                intensity_medfilt = medfilt(intensity, kernel_size=medfilt_kern_size)
+                intensity = intensity_medfilt
+            peaks = find_peaks(intensity, height=np.array([peak_height_threshold, None]))
+            # Make sure peaks were found before trying to add them to the dataframe
+            # Use previously found peaks if none found for this theta
+            if len(peaks[0]) > 0:
+                print(f'Found {len(peaks[0])} peaks')
+                print(peaks[0])
+                found_previous_peak = True
+                if not use_first_peak:
+                    highest_peak_index = np.argmax(peaks[1]['peak_heights'])
+                    # The peak_dist_offset stored in the crop_roi_df is based on
+                    # which distance from center we started from
+                    highest_peak_dist = peaks[0][highest_peak_index] + df.peak_dist_offset.iloc[0]
+                first_peak_dist = peaks[0][0] + df.peak_dist_offset.iloc[0]
+                # This peak dist offset is a way to arbitrarily scale the 
+                # size of the ROI and ensure we're not getting area outside
+                # the cell
+                if use_first_peak:
+                    highest_peak_dist_adj = first_peak_dist + peak_dist_offset
+                else:
+                    highest_peak_dist_adj = highest_peak_dist + peak_dist_offset
+
+                # if somehow we get an error just use a typcial cell radius
+                if highest_peak_dist_adj <= 0:
+                    highest_peak_dist_adj = default_radius_px
+                df.loc[df.theta==t, 'first_peak_dist'] = first_peak_dist
+            else:
+                if found_previous_peak:
+                    # This means a peak was found at some previous, so we'll use that one
+                    # in place of the missing peak
+                    print(f'No peaks found at {t} radians. Using last successful peak {highest_peak_dist_adj} pixels')
+                else:
+                    highest_peak_dist_adj = default_radius_px
+                    print(f'No peaks found at {t} radians and no previous peaks found. Using default peak of {highest_peak_dist_adj} pixels')
+            # Add cartesian coordinates for max amplitude peak found
+            print(f'Using peak dist {highest_peak_dist_adj}')
+            df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj        
+            peak_X = highest_peak_dist_adj*np.cos(t) + x_center
+            peak_Y = highest_peak_dist_adj*np.sin(t) + y_center        
+            df.loc[df.theta==t, 'peak_X'] = peak_X
+            df.loc[df.theta==t, 'peak_Y'] = peak_Y
 
     return df
 
-def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
+def cell_stack_I_by_distance_and_theta(
+    cell_index,
+    crop_rois_df,
+    stacksdict,
+    use_img_inverse=True,
+    use_constant_circle_roi=False
+    ):
+    if use_img_inverse:
+        print('Using inverted image. Usually best when cell edges are dark in original data')
     if type(list(stacksdict.keys())[0]) == str:
         cellstack = stacksdict[str(cell_index)]
     else:
@@ -958,14 +1012,22 @@ def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
         x_center = celldf[celldf.frame_rel==frame_idx].x_center.iloc[0]
         y_center = celldf[celldf.frame_rel==frame_idx].y_center.iloc[0]
         img = cellstack[int(frame_idx)]
+        if use_img_inverse:
+            negative = img*-1
+            inverse = negative - np.min(negative)
+            img = inverse
+        else:
+            pass
         # Measure intensity along traces radiating from
         # center averaged over bins of theta angular width
-        df = intensity_by_distance_and_theta(img,
-                                             x_center_rel,
-                                             y_center_rel)
+        df = intensity_by_distance_and_theta(
+            img,
+            x_center_rel,
+            y_center_rel
+            )
         # For each theta bin, find radius distance coordinate
         # for highest magnitude intensity peak
-        df = polar_intensity_peaks(df)
+        df = polar_intensity_peaks(df, use_constant_circle_roi=use_constant_circle_roi)
         df.loc[:, 'frame_rel'] = frame_idx
         df.loc[:, 'frame'] = celldf[celldf.frame_rel==frame_idx].frame.iloc[0]
         df.loc[:, 'x_center'] = x_center
@@ -982,7 +1044,10 @@ def cell_stack_I_by_distance_and_theta(cell_index, crop_rois_df, stacksdict):
                 val = celldf.loc[frame_idx, colname]
                 df.loc[:, colname] = val
         dfs.append(df)
+
     allframesdf = pd.concat(dfs, ignore_index=True)
+    # Do some outlier filtering of radial distance data added to allframesdf
+    # for theta in allframesdf.theta.unique()
     return allframesdf
 
 def get_frame_cell_mask(allframesdf, measurement_stack, frame_idx):
@@ -1187,3 +1252,91 @@ def get_cell_stacks_from_fits_df(fits_df, traces_df, **kwargs):
 
     if return_stacksdict:
         return stacksdict
+
+def filter_outlier_peaks(allframesdf, threshold=0.7):
+    """
+    Replace highest_peak_dist values per theta that are less than <threshold>*median
+    highest_peak_dist for that theta over all frames with the median highest_peak_dist
+    for that theta
+
+    Return the modified allframesdf
+    """
+    print(f'Filtering outliers with peaks less than {threshold} of median by theta')
+    allframesdf.loc[:, 'highest_peak_dist_corrected'] = allframesdf.highest_peak_dist
+    median_table_by_theta = allframesdf.pivot_table(index=['theta'], aggfunc=np.median)
+    all_theta_median = median_table_by_theta.highest_peak_dist.median()
+    allframesdf.set_index('theta', inplace=True)
+
+    theta_dfs = []
+    all_thetas = list(allframesdf.index.unique())
+    for i, theta in enumerate(all_thetas):
+        theta_df = allframesdf.loc[theta, :].reset_index()
+        median_peak_dist = median_table_by_theta.loc[theta, 'highest_peak_dist']
+        # Sometimes a single theta will be wrong justa bout every frame, so 
+        # compare the median_peak_dist for this theta to all theta values. 
+        # Use the median of the surrounding few thetas as a standin in this case
+        if median_peak_dist <= threshold*all_theta_median:
+            print(f'Theta {theta} has outlier peak median of {median_peak_dist} px')
+            try:
+                median_peak_dist = np.median(median_table_by_theta.loc[all_thetas[i-2]:all_thetas[i+2], 'highest_peak_dist'])
+                print(f'Using neighboring thetas median peak dist of {median_peak_dist}')
+            except Exception as E:
+                print(E)
+                median_peak_dist = all_theta_median
+
+        # Throw out anything that varies by more than 15% from median at that theta
+        # and replace it with the that median
+        outlier_booldex = theta_df['highest_peak_dist'] <= median_peak_dist*threshold
+        theta_df.loc[:, 'is_outlier'] = False
+        theta_df.loc[outlier_booldex, 'is_outlier'] = True
+        theta_df.loc[theta_df.is_outlier, 'highest_peak_dist_corrected'] = median_peak_dist
+
+        theta_df.loc[:, 'peak_X'] = theta_df.highest_peak_dist_corrected*np.cos(theta) + theta_df.x_center_rel
+        theta_df.loc[:, 'peak_Y'] = theta_df.highest_peak_dist_corrected*np.sin(theta) + theta_df.y_center_rel
+        theta_dfs.append(theta_df)    
+
+    allframesdf = pd.concat(theta_dfs)
+
+    return allframesdf
+
+def save_outline_rois_df(allframesdf):
+    """
+    Save the x, y vertices of the cell outline roi found in 
+    <allframesdf> as a .csv
+
+    Return outlinedf
+    """
+    outline_vertices_savepath = allframesdf.bf_crop_stack_abspath.iloc[0].replace('.tif', '_outline-vertices.csv')
+    frames_table = allframesdf.set_index('frame_rel')
+
+    framedfs = []
+    for frame_index in frames_table.index.unique():
+        cellframedf = frames_table.reset_index()[frames_table.reset_index().frame_rel==frame_index]
+        frame_index = int(frame_index)
+
+        xs = []
+        ys = []
+        for i, t in enumerate(list(cellframedf.theta.unique())):
+            x = cellframedf[cellframedf.theta==t].peak_X.iloc[0]
+            xs.append(x)
+            y = cellframedf[cellframedf.theta==t].peak_Y.iloc[0]
+            ys.append(y)
+
+        # Add xy vertices data for this frame 
+        framedf = pd.DataFrame(
+            {
+            'x': xs,
+            'y': ys,
+            'x_center': [allframesdf.x_center.iloc[0] for idx in range(len(xs))],
+            'y_center': [allframesdf.y_center.iloc[0] for idx in range(len(xs))],
+            'source_xy_bf_stack_path': [allframesdf.bf_stack_path.iloc[0] for idx in range(len(xs))],
+            'frame': [frame_index for idx in range(len(xs))]
+            }
+        )
+        framedfs.append(framedf)
+
+    outlinedf = pd.concat(framedfs)
+    outlinedf.to_csv(outline_vertices_savepath, index=False)
+    print(f'Saved outline ROI vertices at\n{outline_vertices_savepath}')
+
+    return outlinedf
