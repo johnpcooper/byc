@@ -127,6 +127,7 @@ def record_cell_roi_set(cell_index,
                       end_event_type,
                       roi_set_type,
                       active_imp_dir,
+                      contains_aggregate,
                       **kwargs):
 
     write = kwargs.get('write', True)
@@ -166,7 +167,8 @@ def record_cell_roi_set(cell_index,
               xy,
               date,
               active_imp_rel_path,
-              roi_set_rel_path]
+              roi_set_rel_path,
+              contains_aggregate]
 
     keys = ['cell_index',
             'expt_type',
@@ -179,32 +181,14 @@ def record_cell_roi_set(cell_index,
             'xy',
             'date',
             '{}_active_imp_relpath'.format(roi_set_type),
-            '{}_roi_set_relpath'.format(roi_set_type)]
+            '{}_roi_set_relpath'.format(roi_set_type),
+            'contains_aggregate']
 
     cell_roi_df = pd.DataFrame(dict(zip(keys, values)), index=[0])
-    # Find the master_index.csv df for this cell and add it to the 
-    # master index.
-    master_index_df, path, row = find_cell_master_index(cell_roi_df, active_imp_path)
-    mdf = pd.DataFrame(master_index_df)
-    # If there's a master index with an existing row for this cell
-    # then add data to that row
-    if mdf.empty == False and path != None and row != None:
-        merge_cell_to_index(cell_roi_df, master_index_df, path, row)
-    # If there's a master index in exptdir but not a row for this cell
-    # then add a new row for that cell with its data
-    elif mdf.empty == False and path != None and row == None:
-        row = mdf.index.max() + 1
-        merge_cell_to_index(cell_roi_df, master_index_df, path, row)
-        print("Appended cell to existing master index, user needs to update other info")
-    # If there's no dataframe and no row found, create a blank one and
-    # merge the cell's data with it
-    elif mdf.empty == True and path == None and row == None:
-        # Create a new master, add the cell to it and save
-        master_index_df, path = utilities.make_blank_master_index(exptdir, date)
-        row = 0
-        merge_cell_to_index(cell_roi_df, master_index_df, path, row)
+    print(f'Create ROI df with {len(values)} values and {len(keys)} keys')
 
     if write:
+        print(f'Writing cell roi dataframe')
         fn = f'{date}_byc_xy{str(xy).zfill(2)}cell{str(cell_index).zfill(3)}_{roi_set_type}_rois_df.csv'
         writepath = os.path.join(active_imp_dir, fn)
         cell_roi_df.to_csv(writepath, index=False)
@@ -215,14 +199,17 @@ def record_cell_roi_set(cell_index,
 
 if __name__ == "__main__":
 
-    if len(sys.argv) == 7:
+    if len(sys.argv) == 8:
+        print(f'Got {len(sys.argv)} arg variables variables from addcellROI.ijm')
         record_cell_roi_set(sys.argv[1],
                               sys.argv[2],
                               sys.argv[3],
                               sys.argv[4],
                               sys.argv[5],
-                              sys.argv[6])
+                              sys.argv[6],
+                              sys.argv[7])
     else:
-        print("wrong number of arg variables. Should be 6")
+        print(f'Got {len(sys.argv)} variables')
+        # print("wrong number of arg variables. Should be 7")
 
 
