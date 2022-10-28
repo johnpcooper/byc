@@ -49,7 +49,7 @@ def mean_filter(df, column_name, kernel_size, name_with_kernel=False):
         mean_of_kernel = np.mean(df.loc[lower:upper, column_name])
         df.loc[i, new_col_name] = mean_of_kernel
         
-    return df
+    # return df
 
 def median_filter(df, column_name, kernel_size, name_with_kernel=False):
     assert np.mod(kernel_size, 2) == 1, 'kernel_size must be odd'    
@@ -76,7 +76,7 @@ def median_filter(df, column_name, kernel_size, name_with_kernel=False):
         mean_of_kernel = np.median(df.loc[lower:upper, column_name])
         df.loc[i, new_col_name] = mean_of_kernel
         
-    return df
+    # return df
 
 def add_filtered_columnns(cell_df, column_name, local_norm_kernel_size=63, med_filter_kernel_size=3):
     """

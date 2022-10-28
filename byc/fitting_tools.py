@@ -1,5 +1,8 @@
+import os
+
 import numpy as np
 import pandas as pd
+
 from scipy.optimize import curve_fit
 from scipy.interpolate import UnivariateSpline
 from scipy.stats import shapiro
@@ -8,8 +11,16 @@ from scipy.stats import mannwhitneyu
 from scipy.stats import linregress
 from inspect import signature
 
+from lmfit.model import ModelResult
+from lmfit import Model
+from lmfit import Parameters
+
 from lifelines import KaplanMeierFitter
 from lifelines import WeibullFitter
+
+from byc import constants
+
+import matplotlib.pyplot as plt
 
 def single_exp(x, a, b, c):
     return a * np.exp(-b * x) + c
@@ -82,6 +93,68 @@ def get_estimate_std_err(y, y_pred):
         std_err = False
 
     return std_err
+
+def get_stderr_by_x(
+    x_smooth,
+    y_pred,
+    sub_fits_df,
+    xvar='dist_from_sen',
+    yvar='b',
+):
+    """
+    For each unique x value in <x_smooth>, calculate the standard
+    error of y_predicted from y data in <sub_fits_df>. If there is
+    only one (or zero) y data point at x, set that standard error
+    to np.nan
+
+    Return a list of standard errors the same length as 
+    <y_pred> and <x_smooth>
+    """
+    stderrs = []
+    sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=False)
+    for i, xval in enumerate(list(x_smooth)):
+        ypredval = y_pred[i]
+        ydata = sorted_subdf.loc[sorted_subdf[xvar]==xval, yvar]
+        if len(ydata) > 0:
+            stderr = np.std(ydata)/np.sqrt(len(ydata))
+            stderr = np.mean(np.array([np.abs(ypredval - ydataval) for ydataval in ydata]))
+            if stderr == 0:
+                stderr = np.nan
+        else:
+            stderr = np.nan
+        stderrs.append(stderr)
+
+    return stderrs
+
+def get_r_sq_with_multi_y_per_x(
+    x_smooth,
+    y_pred,
+    sub_fits_df,
+    xvar='dist_from_sen',
+    yvar='b',
+):
+    """
+    """
+    sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=False)
+    residuals_across_all_x = []
+    y_pred_values = []
+    y_data_values = []
+    for i, xval in enumerate(list(x_smooth)):
+        yval_pred = y_pred[i]
+        ydata = sorted_subdf.loc[sorted_subdf[xvar]==xval, yvar]
+        if len(ydata) > 0:
+            for value in ydata:
+                residual =  yval_pred - value
+                residuals_across_all_x.append(residual)
+                y_data_values.append(value)
+                y_pred_values.append(yval_pred)
+        else:
+            pass
+    y_pred_values = np.array(y_pred_values)
+    y_data_values = np.array(y_data_values)
+    r_sq = get_r_squared(y_data_values, y_pred_values)
+    
+    return r_sq
 
 def get_shapiro_p(residuals):
     """
@@ -488,7 +561,7 @@ def survival_fit(table, **kwargs):
     wbf = WeibullFitter()
     kmf = KaplanMeierFitter()
     T_col = kwargs.get('T_col', 'rls')
-    E_col = kwargs.get('E_col', 'observed')
+    E_col = kwargs.get('E_col', 'rls_observed')
     T = table[T_col]
     E = table[E_col]
 
@@ -569,3 +642,175 @@ def univariate_spline(df, **kwargs):
     ypred = spline(xpred)
 
     return xpred, ypred, spline
+
+def df_from_ModelResult(result: ModelResult):
+    """
+    Extract values, std errors, and inital guesses and ranges
+    from the parameters in <result> and return them in as a 
+    pd.DataFrame
+    """
+    fit_params = result.params
+
+    fitdict = {}
+    for key in fit_params.keys():
+        param = fit_params.get(key)
+        stderr = param.stderr
+        std_err_fraction = stderr/param
+        fitdict[key] = param.value
+        fitdict[f"{key}_stderr"]= stderr
+        fitdict[f"{key}_stderr_fraction"] = std_err_fraction
+
+    fitdf = pd.DataFrame(fitdict, index=[0])
+
+    return fitdf
+
+def fit_logistic_to_fits_df(
+    sub_fits_df: pd.DataFrame,
+    yvar='b',
+    xvar='dist_from_sen',
+    name=None,
+    fitting_func=logistic,
+    plot_results=False,
+    return_result=False
+    ):
+    if name is None:
+        name = sub_fits_df.strain_name.iloc[0]
+    sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=False)
+    # In case you want to fit to median of data per x instead of all data
+    table = sorted_subdf.pivot_table(index=xvar, aggfunc=np.median).reset_index()
+    df = sorted_subdf
+
+    logistic_model= Model(fitting_func)
+
+    params = Parameters()
+    bounds_dict = {
+        'L': (-2, 5),
+        'k': (-10, 10),
+        'x_center': (0, 12),
+        'offset': (-2, 5)
+    }
+
+    guesses_dict = {
+        'L': 2,
+        'k': 2,
+        'x_center': 3,
+        'offset': 1
+    }
+
+    for key, val in bounds_dict.items():
+        params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val))
+
+    result = logistic_model.fit(df[yvar], params, x=df[xvar])
+
+    fitsdf = df_from_ModelResult(result)
+    # Calculate young cells decay rate, taken to be the maximum value
+    # of decay rate moving away from senescence
+    fitsdf.loc[:, 'young_decay_rate'] = fitsdf.loc[0, 'L'] + fitsdf.loc[0, 'offset']
+    fitsdf.loc[:, 'young_decay_rate_stderr_fraction'] = fitsdf.loc[0, 'L_stderr_fraction'] + fitsdf.loc[0, 'offset_stderr_fraction']
+    fitsdf.loc[:, 'young_decay_rate_stderr'] = fitsdf.young_decay_rate_stderr_fraction*fitsdf.young_decay_rate
+
+    # Offset is the value of the curve at 0 generations from senescence
+    fitsdf.loc[:, 'old_decay_rate'] = fitsdf.loc[0, 'young_decay_rate'] - fitsdf.loc[0, 'offset']
+    fitsdf.loc[:, 'old_decay_rate_stderr_fraction'] = fitsdf.loc[0, 'offset_stderr_fraction']
+    fitsdf.loc[:, 'old_decay_rate_stderr'] = fitsdf.loc[0, 'offset_stderr']
+    fitsdf.loc[:, 'strain_name'] = name
+    # Create a dataframe that includes standard error at each x and 
+    # as well as all the fit params created above
+    params = (fitsdf.L.iloc[0], fitsdf.k.iloc[0], fitsdf.x_center.iloc[0], fitsdf.offset.iloc[0])
+    x_smooth = range(int(df[xvar].max())+1)
+    y_pred = logistic(x_smooth, *params)
+    stderrs = get_stderr_by_x(x_smooth, y_pred, sub_fits_df)
+    smoothdf = pd.DataFrame(
+        {
+            'x_input_smooth': x_smooth,
+            'y_pred': y_pred,
+            'stderr': stderrs
+        }
+    )
+    smoothdf.fillna(method='ffill', inplace=True)
+    for column in fitsdf.columns:
+        smoothdf.loc[:, column] = fitsdf.loc[0, column]
+    # Plot results of the fit
+    if plot_results:
+        ax = result.plot_fit()
+        fig = plt.figure()
+        fig.axes.append(ax)
+        ax.set_xlim(25, -1)
+        ax.set_ylim(0, 4)
+    # Save the fit params and error tables
+    filename = f'{name}_logistic-fit_b-vs-dist-from-sen.csv'
+    filepath = os.path.join(constants.byc_data_dir, f'meta/{filename}')
+    filepath = os.path.abspath(filepath)
+    smoothdffilepath = filepath.replace('.csv', '_smoothdf.csv')
+    figfilepath = filepath.replace('.csv', '.png')
+    fitsdf.to_csv(filepath, index=False)
+    smoothdf.to_csv(smoothdffilepath, index=False)
+    print(f'Saved logistic fit results at\n{filepath}')
+    if plot_results:
+        fig.savefig(figfilepath)
+        print(f'Saved figure at\n{figfilepath}')
+
+    if return_result:
+        return fitsdf, smoothdf, result
+    else:
+        return fitsdf
+
+def fit_line_to_fits_df(
+    sub_fits_df: pd.DataFrame,
+    yvar='b',
+    xvar='dist_from_sen',
+    name=None,
+    fitting_func=line,
+    return_result=False,
+    plot_result=False
+    ):
+    if name is None:
+        name = sub_fits_df.strain_name.iloc[0]
+    sorted_subdf = sub_fits_df.sort_values(by='dist_from_sen', ascending=False)
+    # table = sorted_subdf.pivot_table(index='dist_from_sen', aggfunc=np.median).reset_index()
+    # Use df = table if you want to fit to the medians per x value instead of all the data
+    # df = table
+    df = sorted_subdf
+
+    linear_model = Model(fitting_func)
+    result = linear_model.fit(df[yvar], m=0.1, b=1, x=df[xvar])
+
+    fitsdf = df_from_ModelResult(result)
+    fitsdf.loc[:, 'strain_name'] = name
+    params = (fitsdf['m'].iloc[0], fitsdf['b'].iloc[0])
+    x_smooth = range(int(df[xvar].max())+1)
+    y_pred = line(x_smooth, *params)
+    stderrs = get_stderr_by_x(x_smooth, y_pred, sub_fits_df)
+    smoothdf = pd.DataFrame(
+        {
+            'x_input_smooth': x_smooth,
+            'y_pred': y_pred,
+            'stderr': stderrs
+        }
+    )
+    smoothdf.fillna(method='ffill', inplace=True)
+    for column in fitsdf.columns:
+        smoothdf.loc[:, column] = fitsdf.loc[0, column]
+
+    # Plot results of the fit
+    if plot_result:
+        ax = result.plot_fit()
+        fig = plt.figure()
+        fig.axes.append(ax)
+        ax.set_xlim(25, -1)
+        ax.set_ylim(0, 4)
+    # Write the fit params and their standard errors as well as 
+    filename = f'{name}_linear-fit_b-vs-dist-from-sen.csv'
+    filepath = os.path.join(constants.byc_data_dir, f'meta/{filename}')
+    filepath = os.path.abspath(filepath)
+    figfilepath = filepath.replace('.csv', '.png')
+    fitsdf.to_csv(filepath, index=False)
+    print(f'Saved logistic fit results at\n{filepath}')
+    if plot_result:
+        fig.savefig(figfilepath)
+        print(f'Saved figure at\n{figfilepath}')
+
+    if return_result:
+        return fitsdf, smoothdf, result
+    else:
+        return fitsdf

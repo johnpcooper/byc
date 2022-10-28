@@ -5,6 +5,9 @@ from time import time
 
 import numpy as np
 import pandas as pd
+
+# image tools
+import cv2
 import skimage
 from skimage import io
 # Plotting tools
@@ -82,16 +85,23 @@ def figure_ax(**kwargs):
     height_scale = kwargs.get('height_scale', 1)
     width_scale = kwargs.get('width_scale', 1)
     dpi = kwargs.get('dpi', 250)
+    n_subplots = kwargs.get('n_subplots', 1)
     
     figsize = (figsize[0]*width_scale, figsize[1]*height_scale)
     fig = plt.figure(figsize=figsize)
     fig.set_dpi(dpi)
     
-    ax = fig.add_subplot(111)
+    axes = []
+    for subplot_index in range(n_subplots):
+        ax = fig.add_subplot(1, n_subplots, subplot_index+1)
+        axes.append(ax)
 
     remove_spines(ax)
-
-    return fig, ax
+    if n_subplots == 1:
+        return fig, ax
+    else:
+        print(f'Returning fig, {n_subplots} axes as list')
+        return fig, axes
 
 def legend_outside():
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2)
@@ -157,8 +167,8 @@ def format_ticks(ax, **kwargs):
     except:
         xmajorspace = np.nan
     ymajorspace = np.diff(ax.get_yticks())[0]
-    xminorspace = xmajorspace/5
-    yminorspace = ymajorspace/5
+    xminorspace = np.abs(xmajorspace/5)
+    yminorspace = np.abs(ymajorspace/5)
 
     yminorspace = kwargs.get('yminorspace', yminorspace)
     xminorspace = kwargs.get('xminorspace', xminorspace)
@@ -676,7 +686,10 @@ def plot_cell_radial_segmentation(allframesdf, stacksdict, **kwargs):
     dpi = 100
     xlim = (0, 20)
     celldf = allframesdf
-    cellstack = stacksdict[str(int(cell_index))]
+    if type(list(stacksdict.keys())[0]) == str:
+        cellstack = stacksdict[str(int(cell_index))]
+    else:
+        cellstack = stacksdict[cell_index]
 
     # Adjust plot parameters
     mpl = matplotlib
@@ -892,3 +905,86 @@ def plot_cell_chase_stack(tracedf, cellstacksdict, cellkey, manual_contrast=Fals
     for path in savepaths:
         os.remove(path)
     print(f'Saved plot stack at\n{plotstacksavepath}')
+
+
+def save_skimage_stack_as_mp4(filepaths, savepath, **kwargs):
+    """
+    Read in the image files at <filepaths> as cv2 image objects
+    then encode as mp4 video and save at <savepath>
+
+    Return nothing, print save location
+    """
+    # Save as .mp4
+    cv2_frames = [cv2.imread(filepath) for filepath in filepaths]
+    height, width, layers = cv2_frames[0].shape
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fps = 5
+    video = cv2.VideoWriter(savepath, fourcc, fps,
+                            (width, height))
+    for img in cv2_frames:
+        video.write(img)
+    print(f'mp4 saved at\n{savepath}')
+    # Release file from memory
+    video.release()
+
+def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_outline=True):
+    """
+    Using the segmentation data found in <allframesdf>, annotate cell outline
+    ROI and write timestamp on each frame of the <channel> stack in 
+    <cellstacksdict>. Save output as mp4 and tif stack
+
+    Returns nothing
+    """
+    outlinedf = segmentation.save_outline_rois_df(allframesdf)
+    frames_table = allframesdf.set_index('frame_rel')
+    cell_index = frames_table.cell_index.iloc[0]
+    cellname = f'{frames_table.compartment_name.iloc[0]}_cell{str(cell_index).zfill(3)}_roi_{channel}_stack.tif'
+    savepath = os.path.join(frames_table.compartment_dir.iloc[0], f'{cellname}')
+    if not draw_outline:        
+        savepath = savepath.replace('.tif', '_no-outline.tif')
+    t0_frame = 0
+    linewidth = 0.4
+    fontsize = 8
+    filenames = []
+    
+    for frame_index in frames_table.index.unique():
+        frame_index = int(frame_index)
+        frame_img = cellstacksdict[cell_index][frame_index]
+        interval_hours = 10/60
+        hours = (frame_index - t0_frame)*interval_hours
+        fig, ax = figure_ax(
+            dpi=300,
+            height_scale=2*frame_img.shape[0]/300,
+            width_scale=2*frame_img.shape[1]/300)
+        ax.imshow(frame_img, cmap=plt.get_cmap('gray'))
+        xs = list(outlinedf.loc[outlinedf.frame==frame_index, 'x'])
+        ys = list(outlinedf.loc[outlinedf.frame==frame_index, 'y'])
+        #repeat the first point to create a 'closed loop'
+        xs.append(xs[0])
+        ys.append(ys[0])
+
+        if draw_outline:
+            ax.plot(xs, ys, color='white', linewidth=linewidth)
+        # Timestamp the frame
+        ax.annotate(f'{np.round(hours, 2)} hrs', xy=(5, 35), color='white', fontsize=fontsize)
+        # Get rid of the axis since we only want to see the image
+        plt.axis('off')
+        filename = f'frame{str(frame_index).zfill(3)}.tif'
+        # Save the frame. It will be read in and deleted later after 
+        # saving stack as tif and mp4
+        fig.savefig(filename, bbox_inches=0)
+        filenames.append(filename)
+        plt.close(fig)
+        plt.close('all')
+
+
+    frames = []
+    for filename in filenames:
+        img = io.imread(filename)
+        frames.append(img)
+    filepaths = [os.path.join(os.getcwd(), fname) for fname in filenames]
+    save_skimage_stack_as_mp4(filepaths, savepath.replace('.tif', '.mp4'))
+    stack = io.concatenate_images(frames)
+    print(f'Saved stack at \n{savepath}')
+    # Save original tif stack
+    io.imsave(savepath, stack)

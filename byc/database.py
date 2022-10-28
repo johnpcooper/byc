@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from byc import constants, utilities, files, plasmids
+from byc import constants, utilities, files, plasmids, trace_tools
 from byc import standard_analysis as sa
 from byc.constants import patterns
 
@@ -440,8 +440,12 @@ class BudDataBase():
         self.bud_roi_dfs = self.get_bud_roi_dfs()
         self.buddf = self.get_buddf()
 
-    def get_bud_roi_dfs(self):
-        bud_roi_paths = list(self.fits_df.bud_rois_path)
+    def get_bud_roi_dfs(self, use_rel_paths=False):
+        if use_rel_paths:
+            bud_roi_paths = [os.path.join(constants.byc_data_dir, relpath) for relpath in self.fits_df.bud_roi_set_relpath.unique()]
+        else:
+            bud_roi_paths = self.fits_df.bud_rois_path
+        self.fits_df.loc[:, 'bud_rois_path'] = bud_roi_paths
         # Need to account for cells where there are no bud_rois annotated
         # (ie the value will be np.nan). I still want to keep the rates for 
         # downstream in the analysis because all np.nan cells are just
@@ -466,13 +470,17 @@ class BudDataBase():
         for i, df in enumerate(self.bud_roi_dfs):
             cell_index = bud_roi_cell_inds[i]
             if not df.empty:
-                print(f'Annotating cell cycle duration for cell {cell_index}')
+                print(f'Annotating cell cycle features for cell {cell_index}')
+                # Make sure that bud appearance slices ('position') are in
+                # correct order so that deltas make sense
+                df.sort_values(by='position', ascending=True, inplace=True)
                 df.loc[:, 'cycle_duration_frames'] = np.nan
                 df.loc[:, 'cycle_duration_hrs'] = np.nan
                 df.loc[:, 'bud_serial'] = np.nan
                 df.loc[:, 'bud_frame'] = df['position'] - 1
-                bud_frames_str_list = [str(val) for val in df.bud_frame.values]
-                df.loc[:, 'bud_serial'] = '-'.join(bud_frames_str_list)
+                df.loc[:, 'bud_time_hours'] = (df.bud_frame*self.time_delta_mins)/60
+                bud_hours_str_list = [str(val) for val in df.bud_time_hours.values]
+                df.loc[:, 'bud_serial'] = '-'.join(bud_hours_str_list)
                 # Last "bud" is actually the frame before the cell dies, and
                 # first frame is the "beginning" of the first cell cycle (the
                 # frame at which bud appears) so cell cycle 0 needs to have the 
@@ -483,24 +491,58 @@ class BudDataBase():
                 df.loc[df.index[0:-2], 'cycle_duration_frames'] = np.diff(df['position'])[0:-1]
                 cycle_duration_hours = (df.cycle_duration_frames*self.time_delta_mins)/60
                 df.loc[:, 'cycle_duration_hrs'] = cycle_duration_hours
-                df.sort_values(by='position', ascending=True, inplace=True)
+                # Just in case the index is not zero to len(df)
+                df.index = range(len(df))
+                # Add median and mean filtered cycle duration columns
+                constant_args = [
+                    df,
+                    'cycle_duration_hrs'
+                ]
+                name_with_kernel = True
+                for kernelsize in [3, 5]:
+                    trace_tools.mean_filter(*constant_args, kernelsize, name_with_kernel)
+                    trace_tools.median_filter(*constant_args, kernelsize, name_with_kernel)
+                # Create a column with the shape of each bud annotated
+                pattern = "(round|long)"
+                matches = df['name'].apply(lambda x: re.search(pattern, x))
+                df.loc[0:, 'shape_matches'] = matches
+                # This function will make we add nan for bud roi frames that
+                # for whatever reason did not have a shape annotated
+                def find_group(x):
+                    if x is None:
+                        return np.nan
+                    else:
+                        return x.group()
+                df.loc[:, 'bud_shape'] = np.nan
+                # Daughter shapes are annotated at bud appearance frame of the following
+                # bud. I.e. the shape of bud i that appears at frame x is described
+                # in the roi at frame y where bud i + 1 appears. The first value
+                # in the shapes array is meaningless because it would describe a bud
+                # that we never saw appear. The last ROI in the bud roi set annotates
+                # the last frame before the cell dies. So that shape annotation stays
+                df.loc[df.index[0:-1], 'bud_shape'] = df.shape_matches.apply(lambda x: find_group(x))[1:]
+                n_round_buds = len(df[df.bud_shape=='round'])
+                n_long_buds = len(df[df.bud_shape=='long'])
+                df.loc[:, 'n_long_buds'] = n_long_buds
+                df.loc[:, 'n_round_buds'] = n_round_buds
                 df.loc[:, 'cycle_number'] = range(len(df))
+                # Last index in the bud roi set is the pre-death frame so we'll give that
+                # a cycle number of nan
+                df.loc[df.index[-1], 'cycle_number'] = np.nan
                 df.loc[:, 'rls_fraction'] = df['cycle_number']/df['cycle_number'].max()
                 df.loc[:, 'dist_from_sen'] = df['cycle_number'].max() - df['cycle_number']
-                # Add labels found in the fits_table the bud_rois_df (df)
+                df.loc[:, 'rls'] = df['cycle_number'].max()
+                
             else:
                 df = pd.DataFrame({'cell_index': cell_index}, index=[0])
             for col in self.fits_df.columns:
+                # Add labels found in the fits_table the bud_rois_df (df)
                 if col not in df.columns:
                     value = self.fits_df.loc[i, col]
             #         print(f'setting {col} to {value} on buds df')
                     df.loc[:, col] = value
 
         buddf = pd.concat(self.bud_roi_dfs, ignore_index=True)
-        # mdx = ['date',
-        #     'cell_index',
-        #     'first_crop_frame']
-        # buddf.set_index(mdx, inplace=True)
         
         return buddf
 

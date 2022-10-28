@@ -133,6 +133,8 @@ class bycDataSet(object):
                     # labelled with '_<channel_name>'
                     hours = ((df.Slice-1)*collection_interval)/60
                     crop_roi_set_path = os.path.join(constants.byc_data_dir, cellrow.crop_roi_set_relpath)
+                    if type(crop_roi_set_path) != str:
+                        crop_roi_set_path = cellrow.crop_roi_set_path
                     print(f"Looking for crop ROIs at {crop_roi_set_path}")
                     rois = read_roi_zip(crop_roi_set_path)
                     first_position = rois[list(rois.keys())[0]]['position']
@@ -501,7 +503,7 @@ def create_and_annotate_mdf(exptname, compartmentname,
         try:
             mdf_type = 'crop_rois'
             file_pattern = constants.patterns.crop_roi_df_file
-            mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)
+            mdf, savepath = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type)            
         except Exception as E:
             print(f'Could not generate a master index df using {mdf_type} csvs\n')
             mdf_type = 'bud_rois'
@@ -530,7 +532,7 @@ def create_and_annotate_mdf(exptname, compartmentname,
     mdf.loc[:, 'age_state'] = age_state
 
     # Add paths to cell tracking ROIs
-    mdf = files.path_annotate_master_index_df(mdf)
+    mdf = files.path_annotate_master_index_df(mdf, channels=['bf', 'yfp', 'dsred'])
     if len(mdf) > 0:
         print(f'Successfully path annotated master index')
     # Create buds master index using bud roi dfs found

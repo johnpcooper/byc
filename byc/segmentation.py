@@ -353,11 +353,11 @@ def fill_crop_roi_df(cell_index, mdf, dataset, bf_stack=None):
 
     if multi_cell_mdf:
         cell_row = mdf[mdf.cell_index==cell_index]
-        rois_path = cell_row.crop_rois_path.iloc[0]
+        rois_path = os.path.join(constants.byc_data_dir, cell_row.crop_roi_set_relpath.iloc[0])
         bf_stack_path = cell_row.bf_stack_path.iloc[0]
     else:
         cell_row = mdf
-        rois_path = cell_row.crop_rois_path
+        rois_path = os.path.join(constants.byc_data_dir, cell_row.crop_roi_set_relpath.iloc[0])
         bf_stack_path = cell_row.bf_stack_path
     # Read in various files
     if bf_stack is None:
@@ -645,7 +645,7 @@ def get_cell_crop_stack(cell_roi_df,
     cellstack, cell_roi_df = cropped_stack_from_cellroidf(*crop_args, **crop_kwargs)
     # Want to write cropped stack to same location it would be written if the cell
     # were segmented manually
-    files.add_cell_channel_crop_stack_paths(cell_roi_df)
+    files.add_cell_channel_crop_stack_paths(cell_roi_df, channels=[channel_name])
     writepath_colname = f'{channel_name}_crop_stack_abspath'
     writepath = cell_roi_df[writepath_colname].iloc[0]
     cell_index = cell_roi_df.cell_index.iloc[0]
@@ -900,7 +900,7 @@ def polar_intensity_peaks(
     mean_center=False,
     use_first_peak=True,
     use_constant_circle_roi=False,
-    default_radius_px=12,
+    default_radius_px=10,
     **kwargs
     ):
     """
@@ -926,6 +926,9 @@ def polar_intensity_peaks(
     y_center = df.y_center_rel.iloc[0]
     
     found_previous_peak = False
+    if use_constant_circle_roi:
+        # Add cartesian coordinates for max amplitude peak found
+        print(f'Using default constant circle with radius {default_radius_px}')
 
     for t in df.theta.unique():
         if use_constant_circle_roi:
@@ -934,7 +937,7 @@ def polar_intensity_peaks(
             df.loc[df.theta==t, 'first_peak_dist'] = highest_peak_dist_adj
             df.loc[df.theta==t, 'highest_peak_dist'] = highest_peak_dist_adj        
             peak_X = highest_peak_dist_adj*np.cos(t) + x_center
-            peak_Y = highest_peak_dist_adj*np.sin(t) + y_center        
+            peak_Y = highest_peak_dist_adj*np.sin(t) + y_center
             df.loc[df.theta==t, 'peak_X'] = peak_X
             df.loc[df.theta==t, 'peak_Y'] = peak_Y
         else:
@@ -992,7 +995,8 @@ def cell_stack_I_by_distance_and_theta(
     crop_rois_df,
     stacksdict,
     use_img_inverse=True,
-    use_constant_circle_roi=False
+    use_constant_circle_roi=False,
+    default_radius_px=9
     ):
     if use_img_inverse:
         print('Using inverted image. Usually best when cell edges are dark in original data')
@@ -1027,7 +1031,7 @@ def cell_stack_I_by_distance_and_theta(
             )
         # For each theta bin, find radius distance coordinate
         # for highest magnitude intensity peak
-        df = polar_intensity_peaks(df, use_constant_circle_roi=use_constant_circle_roi)
+        df = polar_intensity_peaks(df, use_constant_circle_roi=use_constant_circle_roi, default_radius_px=default_radius_px)
         df.loc[:, 'frame_rel'] = frame_idx
         df.loc[:, 'frame'] = celldf[celldf.frame_rel==frame_idx].frame.iloc[0]
         df.loc[:, 'x_center'] = x_center
@@ -1229,11 +1233,12 @@ def get_cell_stacks_from_fits_df(fits_df, traces_df, **kwargs):
         'crop_roi_set_relpath',
         'crop_active_imp_relpath'
     ]
+    channels = kwargs.get('channels', ['bf', 'yfp'])
     for col in relpath_colnames:
         files.add_abspath_to_df(fits_df, colname=col)
         
-    files.add_cell_channel_crop_stack_paths(fits_df, channels=['bf', 'yfp'])
-    files.add_cell_measurement_roi_paths(fits_df, channels=['bf', 'yfp'])
+    files.add_cell_channel_crop_stack_paths(fits_df, channels=channels)
+    files.add_cell_measurement_roi_paths(fits_df, channels=channels)
     # Go through each cell in the fits_df and find a cropped
     # channel stack for it
     rowdexes = fits_df.index.unique()

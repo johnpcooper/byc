@@ -669,18 +669,29 @@ def mdf_from_file_pattern(compartmentdir, file_pattern, **kwargs):
     else:
         pass
     dfs = [pd.read_csv(path) for path in filepaths]
-    try:
-        mdf = pd.concat(dfs, ignore_index=True).sort_values(by='cell_index')
-        if save_mdf:
-            mdf.to_csv(savepath, index=False)
-            print(f'Saved master index df at:\n{savepath}')
-        if return_savepath:
-            return (mdf, savepath)
-        else:
-            return mdf
-    except Exception as e:
-        print(f'Could not concatanate .csvs into a single dataframe\nError: {e}')
-        return None
+    # try:
+    mdf = pd.concat(dfs, ignore_index=True).sort_values(by='cell_index')
+    if 'crop_roi_set_path' in mdf.columns:
+        print(f'Adding relative path to mdf')
+        # Need to add relative path to crop roi set
+        mdf.loc[:, 'crop_roi_set_relpath'] = mdf.crop_roi_set_path.apply(lambda x: str(x).replace(constants.byc_data_dir, ''))
+    if 'bud_roi_set_path' in mdf.columns:
+        print(f'Adding relative path to mdf')
+        # Need to add relative path to crop roi set
+        mdf.loc[:, 'bud_roi_set_relpath'] = mdf.bud_roi_set_path.apply(lambda x: str(x).replace(constants.byc_data_dir, ''))
+
+    if 'compartment_dir' in mdf.columns:
+        mdf.loc[:, 'compartment_reldir'] = mdf.compartment_dir.apply(lambda x: str(x).replace(constants.byc_data_dir, ''))
+    if save_mdf:
+        mdf.to_csv(savepath, index=False)
+        print(f'Saved master index df at:\n{savepath}')
+    if return_savepath:
+        return (mdf, savepath)
+    else:
+        return mdf
+    # except Exception as e:
+    #     print(f'Could not concatanate .csvs into a single dataframe\nError: {e}')
+    #     return None
 
 def measurement_rois_path_from_crop_rois_path(cell_crop_rois_path, xy, channels):
     """
@@ -706,17 +717,17 @@ def measurement_rois_path_from_crop_rois_path(cell_crop_rois_path, xy, channels)
     
     return measpath_final
 
-def path_annotate_master_index_df(mdf):
+def path_annotate_master_index_df(mdf, **kwargs):
     """
     For each cell in the master index, add a absolute paths
     to the cell's crop rois set, bud rois set, source channel
     stack tifs, and measurement roi sets (cell outlines annotated
     on individual cell stacks)
     """
-    channels = str(mdf.channels_collected.iloc[0]).split()
-    col_names = ['crop_rois_path',
-                 'bud_rois_path',
-                 'outline_rois_path']
+    channels = kwargs.get('channels', str(mdf.channels_collected.iloc[0]).split())
+    col_names = ['crop_roi_set_path',
+                 'bud_roi_set_path',
+                 'outline_roi_set_path']
     for channel in channels:
         col_names.append(f'{channel}_stack_path')
         
@@ -761,7 +772,6 @@ def path_annotate_master_index_df(mdf):
         # position (xy) stakcs
         for key in stacks_dict.keys():
             vals.append(stacks_dict[key])
-        # Create nan columns for the info to be added
         for i, col_name in enumerate(col_names):
             mdf.loc[mdf.cell_index==cell_index, col_name] = vals[i]
         
