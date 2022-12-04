@@ -9,6 +9,15 @@ from byc import standard_analysis as sa
 from byc import plotting
 
 if __name__=="__main__":
+    # Pass either one or two arg variables
+
+    # Argv[1] is compartmentname or the directory name
+    # holding analysis of this experiment in 
+    # constants.source_dir/data/<compartmentname>
+
+    # argv[2] is the channels collected and needing to be 
+    # analyzed in this experiment e.g. 'bf|yfp|rfp'
+
     # segmentation df is redundant to allmeasureddf
     # which contains all the segmentation information
     # per frame as well as mean intensity within cell
@@ -28,27 +37,46 @@ if __name__=="__main__":
             0: 14,
             148: 158
         }
+    elif len(sys.argv) == 3:
+        compartmentname = sys.argv[1]
+        # Extract experiment name from compartment name
+        # that can be used to get absolute path to the 
+        # compartment directory
+        splitname = compartmentname.split('_')
+        exptname = '_'.join(splitname[0:2])
+        channels = str(sys.argv[2]).split(' ')
+        # Need to strip non-alpha numerics because somehow
+        # quote symbols end up in string when passing
+        # 'ch1 ch2 ch3' as argv
+        channels = [''.join(filter(str.isalnum, name)) for name in channels]
+        print(f'Using channels {channels}')
+        chase_frame_dict = {
+            0: 14,
+            148: 158
+        }
     else:
-        print("Please pass a compartment name argument variable")
-        quit()
+        sys.exit("Please pass a compartment name argument variable")
+
     args = [exptname,
             compartmentname]
 
     kwargs = {
-        'chase_frame_dict': chase_frame_dict
+        'chase_frame_dict': chase_frame_dict,
+        'channels': channels
     }
     print(f'Proceeding with compartment {compartmentname} from expt {exptname}')
     mdf = sa.create_and_annotate_mdf(*args, **kwargs)
+    mdf.loc[:, 'channels_collected'] = ' '.join(channels)
     ds = sa.bycDataSet(mdf=mdf)
     # Now need to roll the stuff below into a single function
     # that reads in crop_roi_dfs and annotates fluorescence
     # 
     crop_roi_dfs = segmentation.make_cell_roi_dfs(mdf, bycdataset=ds)
-
-    chname = channels[0]
-    bfcellstacks, bfcellstacksdict = segmentation.get_cell_stacks(crop_roi_dfs, channel_name=chname)
-    chname = channels[1]
-    yfpcellstacks, yfpcellstacksdict = segmentation.get_cell_stacks(crop_roi_dfs, channel_name=chname)
+    cellstacksdicts_dict = {}
+    for channel in channels:
+        cellstacks, cellstacksdict = segmentation.get_cell_stacks(crop_roi_dfs, channel_name=channel)
+        cellstacksdicts_dict[channel] = cellstacksdict
+    bfcellstacksdict = cellstacksdicts_dict['bf']
     # segmentation.get_cell_stacks() runs segmentation.cropped_stack_from_cellroidf
     # which adds relative x, y center coordinates according to the x and y
     # buffer size used in the crop. Thus, I concatanate after that function
@@ -56,14 +84,12 @@ if __name__=="__main__":
     crop_rois_df = pd.concat(crop_roi_dfs, ignore_index=True)
 
     # Find radial intensity peaks and segment cell areas
-    cellstacksdict = bfcellstacksdict
     peak_idx_to_use=0
-
     allframesdfs = []
     for cell_index in crop_rois_df.cell_index.unique():
         args = [cell_index,
                 crop_rois_df,
-                cellstacksdict]
+                bfcellstacksdict]
 
         kwargs = {
             'use_img_inverse': False,
@@ -74,9 +100,12 @@ if __name__=="__main__":
         # Filter outliers from within theta groups
         allframesdf = segmentation.filter_outlier_peaks(allframesdf)
         if plot_segmentation_results:
-            plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict)
-            plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict, draw_outline=False)
-            plotting.save_segmentation_visualization(allframesdf, 'yfp', yfpcellstacksdict)
+            try:
+                plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict)
+                # plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict, draw_outline=False)
+                # plotting.save_segmentation_visualization(allframesdf, 'yfp', yfpcellstacksdict)
+            except Exception as E:
+                print(f'Failed to save cell vides with following exception:\n{E}')
         allframesdfs.append(allframesdf)
         
     alldf = pd.concat(allframesdfs, ignore_index = True)
@@ -92,20 +121,21 @@ if __name__=="__main__":
     allframesdfs_measured = []
     for cell_index in mdf.cell_index.unique():
         allframesdf = alldf[alldf.cell_index==cell_index]
-        if type(list(yfpcellstacksdict.keys())[0]) == str:
-            measurement_stack = yfpcellstacksdict[str(cell_index)]
-        else:
-            measurement_stack = yfpcellstacksdict[cell_index]
-        frame_cell_masks = []
-        measurements = []
-        for frame_idx in allframesdf.frame_rel.unique():
-            mask = segmentation.get_frame_cell_mask(allframesdf,
-                                    measurement_stack,
-                                    frame_idx)
-            frame_cell_masks.append(mask)
-            measurement = np.mean(measurement_stack[int(frame_idx)][mask])
-            measurements.append(measurement)
-            allframesdf.loc[allframesdf.frame_rel==frame_idx, 'Mean_yfp_auto'] = measurement
+        for channel, cellstacksdict in cellstacksdicts_dict.items():
+            if type(list(cellstacksdict.keys())[0]) == str:
+                measurement_stack = cellstacksdict[str(cell_index)]
+            else:
+                measurement_stack = cellstacksdict[cell_index]
+            frame_cell_masks = []
+            measurements = []
+            for frame_idx in allframesdf.frame_rel.unique():
+                mask = segmentation.get_frame_cell_mask(allframesdf,
+                                        measurement_stack,
+                                        frame_idx)
+                frame_cell_masks.append(mask)
+                measurement = np.mean(measurement_stack[int(frame_idx)][mask])
+                measurements.append(measurement)
+                allframesdf.loc[allframesdf.frame_rel==frame_idx, f'Mean_{channel}_auto'] = measurement
         allframesdfs_measured.append(allframesdf)
         
     allmeasureddf = pd.concat(allframesdfs_measured, ignore_index=True)

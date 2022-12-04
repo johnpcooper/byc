@@ -53,9 +53,9 @@ if __name__ == '__main__':
             fraction = 0.5
             print(f'Defaulting to middle {fraction} of image starting at user input pixel {start_pixel_x}')
         else:
-            start_pixel_x = 256
+            start_pixel_x = None
             fraction= 0.5
-            print(f'Defaulting to middle {fraction} of image starting at default pixel {start_pixel_x}')
+            print(f'Defaulting to middle {fraction} of image starting 1/4 width into x axis')
 
         main(start_pixel_x=start_pixel_x, fraction=fraction)
     else:
