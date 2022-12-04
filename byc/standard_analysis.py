@@ -481,6 +481,7 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp', **kwargs):
     return cell_trace_df
 
 def create_and_annotate_mdf(exptname, compartmentname,
+                            channels=None,
                             **kwargs):
     """
     Look in the compartmentdir found using <exptname> and
@@ -494,7 +495,13 @@ def create_and_annotate_mdf(exptname, compartmentname,
     add_buds_to_mdf = kwargs.get('add_buds_to_mdf', True)
     savepath =kwargs.get('savepath', None)
     savemdf = kwargs.get('savemdf', True)
-    channels = kwargs.get('channels_collected', 'bf yfp')
+    if channels == None:
+        print(f'Defaulting to channels bf, rfp, yfp')
+        channels = ['bf', 'yfp', 'rfp']
+    else:
+        pass
+    channels_str = ' '.join(channels)
+    print(f'Analyzing channels {channels}')
     age_state = kwargs.get('age_state', 'old')
     chase_frame_dict = kwargs.get('chase_frame_dict', None)
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
@@ -528,11 +535,12 @@ def create_and_annotate_mdf(exptname, compartmentname,
             mdf.loc[mdf.first_crop_frame==first_frame, 'chase_frame'] = chase_frame
 
     mdf.loc[:, 'compartment_name'] = compartmentname
-    mdf.loc[:, 'channels_collected'] = channels
     mdf.loc[:, 'age_state'] = age_state
 
+    mdf.loc[:, 'channels_collected'] = channels_str
+
     # Add paths to cell tracking ROIs
-    mdf = files.path_annotate_master_index_df(mdf, channels=['bf', 'yfp', 'dsred'])
+    mdf = files.path_annotate_master_index_df(mdf, channels=channels)
     if len(mdf) > 0:
         print(f'Successfully path annotated master index')
     # Create buds master index using bud roi dfs found

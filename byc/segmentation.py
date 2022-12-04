@@ -487,7 +487,7 @@ def get_channel_dfs(crop_rois_df):
         channel_dfs.append(channel_df)
         print(f'Added channel df to {channel} to <channel_dfs> from:/n{channel_df_path}')
 
-def make_cell_roi_dfs(mdf, use_bycdataset=False, bycdataset=None, return_crop_stacks=False):
+def make_cell_roi_dfs(mdf, use_bycdataset=False, bycdataset=None):
     """
     For each cell in the <mdf>, read its crop rois into a dataframe,
     annotate the dataframe with x, y coordinates of crop ROI center,

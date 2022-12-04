@@ -305,7 +305,7 @@ def get_all_fits_df(dfs_list, start_frame, window_size,
                                       fit_func=fit_func, col_name=col_name,
                                       background=background,
                                       background_subtract=background_subtract,
-                                      expl_var_names=expl_vars)
+                                      expl_var_names=expl_vars, window_width=window_size)
             fit_params_dfs.append(pd.DataFrame(fit_params_dict))
         except Exception as e:
             print('fit failed for cell ', i)

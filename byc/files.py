@@ -292,7 +292,8 @@ def get_channel_names(sampledir):
                  'YFP': 'yfp',
                  'RFP': 'rfp',
                  'GFP': 'gfp',
-                 'mKO': 'mko'}
+                 'mKO': 'mko',
+                 'BFP': 'bfp'}
     fluor_channel_names = []
     channel_names = []
     raw_channel_names = []
@@ -725,6 +726,7 @@ def path_annotate_master_index_df(mdf, **kwargs):
     on individual cell stacks)
     """
     channels = kwargs.get('channels', str(mdf.channels_collected.iloc[0]).split())
+    print(f'Adding paths for channels {channels}')
     col_names = ['crop_roi_set_path',
                  'bud_roi_set_path',
                  'outline_roi_set_path']
