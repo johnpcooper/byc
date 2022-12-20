@@ -443,18 +443,24 @@ class BudDataBase():
     def get_bud_roi_dfs(self, use_rel_paths=False):
         if use_rel_paths:
             bud_roi_paths = [os.path.join(constants.byc_data_dir, relpath) for relpath in self.fits_df.bud_roi_set_relpath.unique()]
+            xys = [xy for xy in self.fits_df.xy]
         else:
             bud_roi_paths = self.fits_df.bud_rois_path
+            xys = [xy for xy in self.fits_df.xy]
         self.fits_df.loc[:, 'bud_rois_path'] = bud_roi_paths
         # Need to account for cells where there are no bud_rois annotated
         # (ie the value will be np.nan). I still want to keep the rates for 
         # downstream in the analysis because all np.nan cells are just
         # time 0 BYC cells that weren't followed
         bud_roi_dfs = []
-        for path in bud_roi_paths:
+        print(f'Len bud_roi_paths = {len(bud_roi_paths)}')
+        print(f'Len xys = {len(xys)}')
+        for i, path in enumerate(bud_roi_paths):
             if not type(path) == float:
                 if os.path.exists(path):
                     bud_roi_df = files.read_rectangular_rois_as_df(path)
+                    bud_roi_df.loc[:, 'bud_roi_set_path'] = path
+                    bud_roi_df.loc[:, 'xy'] = xys[i]
                 else:
                     print(f'Found non-float path that does not exist: {path}')
             else:
@@ -478,9 +484,10 @@ class BudDataBase():
                 df.loc[:, 'cycle_duration_hrs'] = np.nan
                 df.loc[:, 'bud_serial'] = np.nan
                 df.loc[:, 'bud_frame'] = df['position'] - 1
+                df.loc[:, 'first_bud_frame'] = df.bud_frame.min()
                 df.loc[:, 'bud_time_hours'] = (df.bud_frame*self.time_delta_mins)/60
-                bud_hours_str_list = [str(val) for val in df.bud_time_hours.values]
-                df.loc[:, 'bud_serial'] = '-'.join(bud_hours_str_list)
+                bud_frames_str_list = [str(int(val)) for val in df.bud_frame.values]
+                df.loc[:, 'bud_serial'] = '-'.join(bud_frames_str_list)
                 # Last "bud" is actually the frame before the cell dies, and
                 # first frame is the "beginning" of the first cell cycle (the
                 # frame at which bud appears) so cell cycle 0 needs to have the 
@@ -531,16 +538,25 @@ class BudDataBase():
                 df.loc[df.index[-1], 'cycle_number'] = np.nan
                 df.loc[:, 'rls_fraction'] = df['cycle_number']/df['cycle_number'].max()
                 df.loc[:, 'dist_from_sen'] = df['cycle_number'].max() - df['cycle_number']
-                df.loc[:, 'rls'] = df['cycle_number'].max()
-                
+                # Last annotated "bud frame" is the frame at which the cells was last observed
+                # alive, whether because it dies or disappears from view down the central
+                #  hallway in the next (or almost next) frame.
+                df.loc[:, 'rls'] = len(df) - 1
+                # Annotate how the buds observation ended (either cell escaped or died during the
+                # course of the experiment)
+                # need to do this by reading in the annotated bud_rois_df.csv corresponding to 
+                # this cell.
+                bud_roi_path = df.bud_roi_set_path.iloc[0]
+                bud_roi_fn = os.path.basename(bud_roi_path)
+                xy = int(df.xy.iloc[0])
+                rois_df_fn = f'{bud_roi_fn[0:12]}_xy{str(xy).zfill(2)}cell{str(int(cell_index)).zfill(3)}_bud_rois_df.csv'
+                rois_df_path = bud_roi_path.replace(bud_roi_fn, rois_df_fn)
+                bud_rois_annotated_df = pd.read_csv(rois_df_path)
+                for col in bud_rois_annotated_df.columns:
+                    df.loc[:, col] = bud_rois_annotated_df[col].iloc[0]
             else:
                 df = pd.DataFrame({'cell_index': cell_index}, index=[0])
-            for col in self.fits_df.columns:
-                # Add labels found in the fits_table the bud_rois_df (df)
-                if col not in df.columns:
-                    value = self.fits_df.loc[i, col]
-            #         print(f'setting {col} to {value} on buds df')
-                    df.loc[:, col] = value
+            df.loc[:, 'compartment_name'] = os.path.basename(os.path.dirname(rois_df_path))
 
         buddf = pd.concat(self.bud_roi_dfs, ignore_index=True)
         
