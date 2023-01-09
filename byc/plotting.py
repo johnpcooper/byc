@@ -942,6 +942,7 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
     savepath = os.path.join(frames_table.compartment_dir.iloc[0], f'{cellname}')
     if not draw_outline:        
         savepath = savepath.replace('.tif', '_no-outline.tif')
+    
     t0_frame = 0
     linewidth = 0.4
     fontsize = 8
@@ -988,3 +989,6 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
     print(f'Saved stack at \n{savepath}')
     # Save original tif stack
     io.imsave(savepath, stack)
+    # Delete tifs for individual frames now that the stack has been saved
+    for filename in filenames:
+        os.remove(filename)
