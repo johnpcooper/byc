@@ -1347,12 +1347,6 @@ def save_outline_rois_df(allframesdf):
 
     return outlinedf
 
-from skimage import io
-from skimage.filters import threshold_otsu
-from skimage.measure import label, regionprops, regionprops_table
-import numpy as np
-import pandas as pd
-
 def segment_stack_with_fluor(stack, **kwargs):
     """
     <stack> is a 3d numpy grayscale array from fluorescence imaging
