@@ -8,6 +8,7 @@ import pandas as pd
 
 from skimage.io import imsave, concatenate_images
 from skimage.filters import threshold_otsu
+from skimage.measure import label, regionprops, regionprops_table
 from skimage import img_as_uint
 import skimage
 from scipy.signal import medfilt, find_peaks
@@ -1345,3 +1346,109 @@ def save_outline_rois_df(allframesdf):
     print(f'Saved outline ROI vertices at\n{outline_vertices_savepath}')
 
     return outlinedf
+
+from skimage import io
+from skimage.filters import threshold_otsu
+from skimage.measure import label, regionprops, regionprops_table
+import numpy as np
+import pandas as pd
+
+def segment_stack_with_fluor(stack, **kwargs):
+    """
+    <stack> is a 3d numpy grayscale array from fluorescence imaging
+
+    Return dfs, objectmasks
+
+    dfs is a dataframe for each frame containing the information defined in 
+    the kwarg "properties" and masks is a list of boolean masks with the 
+    same shape as <stack> that can be used to select pixels from the original
+    stack (or other) to measure
+    """ 
+    properties = kwargs.get('properties',
+        [
+            'area',
+            'bbox',
+            'convex_area',
+            'bbox_area',
+            'major_axis_length',
+            'minor_axis_length',
+            'eccentricity',
+            'centroid'
+            ]
+    )
+    cell_box_mask_width = kwargs.get('cell_box_mask_width', 11)
+    offset = kwargs.get('offset', 3)
+    save_segmented_mask = kwargs.get('save_segmented_mask', True)
+    filepath = kwargs.get('stackpath', os.path.join(os.getcwd(), 'unknown_stack.tif'))
+    # Define a restricted ROI within which we'll calculate otsu threshold. We'll then 
+    # for blobs with center of mass within this box + a little width
+    n_frames = stack.shape[0]
+    width = stack.shape[1]
+    height = stack.shape[2]
+    width_center = int(np.round(width/2, decimals=0))
+    height_center = int(np.round(height/2, decimals=0))
+    x_bounds = (width_center - cell_box_mask_width, width_center + cell_box_mask_width)
+    y_bounds = (height_center - cell_box_mask_width, height_center + cell_box_mask_width)
+    # Segment each frame in the stack using Otsu threshold. Only use data we expect
+    # to be about within the cell to determine threshold so that we are finding the
+    # threshold that defines nucleus vs. cytosol and not whole cell vs. background
+    thresholds = [threshold_otsu(image[x_bounds[0]:x_bounds[1], y_bounds[0]:y_bounds[1]]) for image in stack]
+    # Find the otsu threshold only within the expected cell area so that we don't segment
+    # the whole cell, just the nucleus
+    otsu_masks = [stack[frame] > threshold for frame, threshold in enumerate(thresholds)]
+    # Watershed isn't really necessary because we're only going to accept
+    # mask coordinates that are also within the expected cell box
+    cell_box_masks = np.full_like(stack, False)
+    # Use a slightly larger area for the cell_box_masks list that will be used to 
+    # restrict which blob we determine to be the object of interest
+    cell_box_masks[:, x_bounds[0]-offset:x_bounds[1]+offset, y_bounds[0]-offset:y_bounds[1]+offset] = True
+    # Label individual objects found in the otsu thresholded masks
+    object_labels = []
+    for frame_number, mask in enumerate(otsu_masks):
+        # This needs to fail safely so we have some kind of mask for each
+        # frame even if we fail to find objects in one
+        try:
+            object_label_set = label(mask)
+        except Exception as e:
+            print(f'Failed to find objects in otsu threshold mask at frame {frame_number} with exception:\n{e}')
+            print(f'Using default centered cell box of width {cell_box_mask_width}')
+            object_label_set = np.full_like(stack[frame_number], 0)
+            object_label_set[cell_box_masks[frame_number]] = 1
+
+        object_labels.append(object_label_set)
+    # For each frame in the stack, define the cell of interest ROI and 
+    # Define properties of individual objects and choose the one
+    dfs = []
+    objectmasks = []
+    for frame_number in range(n_frames):
+        df = pd.DataFrame(regionprops_table(object_labels[frame_number], properties=properties))
+        # We want to be able to use the centroid values as coordinates at some point so round them
+        # them with 0 decimal places and turn into integers
+        df.loc[:, 'centroid_x'] = [np.int32(val) for val in np.round(df['centroid-1'], decimals=0)]
+        df.loc[:, 'centroid_y'] = [np.int32(val) for val in np.round(df['centroid-0'], decimals=0)]
+        # X is a matrix that gives the X coordinate at each pixel 
+        # Y is a matrix that gives the Y coordinate at each pixel
+        [X, Y] = np.meshgrid(np.arange(height), np.arange(width))
+        # Get each value of x and y that are inside the estimated cell_box_mask
+        x_within_cell_box = np.unique(X[np.bool_(cell_box_masks[frame_number])])
+        y_within_cell_box = np.unique(Y[np.bool_(cell_box_masks[frame_number])])
+        # Restrict the regionprops_table down to only those with centroid inside
+        # the estimated cell box
+        bool1 = df.centroid_x.isin(x_within_cell_box)
+        bool2 = df.centroid_y.isin(y_within_cell_box)
+        objectdf = df[bool1 & bool2]
+        objectdf.loc[:, 'frame_number'] = frame_number
+        object_index = objectdf.index.unique()[0]
+        object_value_in_mask = object_index + 1
+        objectmask = object_labels[frame_number] == object_value_in_mask
+        # Add final dataframe and mask for the object of interest to 
+        # the lists that will be returned
+        dfs.append(objectdf)
+        objectmasks.append(objectmask)
+
+    if save_segmented_mask:
+        maskstacksavepath = filepath.replace('.tif', '_mask.tif')
+        io.imsave(maskstacksavepath, io.concatenate_images([mask*1 for mask in objectmasks]), check_contrast=False)
+        print(f'Saved segmented mask at\n{maskstacksavepath}')
+    
+    return dfs, objectmasks
