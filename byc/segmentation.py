@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from skimage.io import imsave, concatenate_images
+from skimage import io
 from skimage.filters import threshold_otsu
 from skimage.measure import label, regionprops, regionprops_table
 from skimage import img_as_uint
@@ -1415,22 +1416,18 @@ def segment_stack_with_fluor(stack, **kwargs):
     dfs = []
     objectmasks = []
     for frame_number in range(n_frames):
+        print(f'Segmenting frame {frame_number} of {n_frames}', end='\r')
         df = pd.DataFrame(regionprops_table(object_labels[frame_number], properties=properties))
         # We want to be able to use the centroid values as coordinates at some point so round them
         # them with 0 decimal places and turn into integers
         df.loc[:, 'centroid_x'] = [np.int32(val) for val in np.round(df['centroid-1'], decimals=0)]
         df.loc[:, 'centroid_y'] = [np.int32(val) for val in np.round(df['centroid-0'], decimals=0)]
-        # X is a matrix that gives the X coordinate at each pixel 
-        # Y is a matrix that gives the Y coordinate at each pixel
-        [X, Y] = np.meshgrid(np.arange(height), np.arange(width))
-        # Get each value of x and y that are inside the estimated cell_box_mask
-        x_within_cell_box = np.unique(X[np.bool_(cell_box_masks[frame_number])])
-        y_within_cell_box = np.unique(Y[np.bool_(cell_box_masks[frame_number])])
-        # Restrict the regionprops_table down to only those with centroid inside
-        # the estimated cell box
-        bool1 = df.centroid_x.isin(x_within_cell_box)
-        bool2 = df.centroid_y.isin(y_within_cell_box)
-        objectdf = df[bool1 & bool2]
+        df.loc[:, 'x_distance_from_center'] = np.abs(df.centroid_x)
+        # Select the object with its center of gravity closest to the center
+        # as our blob of interest
+        df.sort_values(by='x_distance_from_center', inplace=True)
+        df.loc[:, 'dist_from_center_rank'] = range(len(df))
+        objectdf = df[df.dist_from_center_rank==0]
         objectdf.loc[:, 'frame_number'] = frame_number
         object_index = objectdf.index.unique()[0]
         object_value_in_mask = object_index + 1
