@@ -6,12 +6,18 @@ import tkinter.filedialog as dia
 import numpy as np
 import pandas as pd
 
+import skimage
 from skimage.io import imsave, concatenate_images
+from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
+from scipy import ndimage as ndi
 from skimage import io
 from skimage.filters import threshold_otsu
 from skimage.measure import label, regionprops, regionprops_table
-from skimage import img_as_uint
-import skimage
+from skimage import img_as_uint, img_as_ubyte
+from skimage.draw import polygon_perimeter
+
+from scipy.spatial import ConvexHull
 from scipy.signal import medfilt, find_peaks
 
 from matplotlib.path import Path
@@ -1348,6 +1354,85 @@ def save_outline_rois_df(allframesdf):
 
     return outlinedf
 
+def annotate_label_df(labeldf, center_x):
+    """
+    Annotate useful information on a dataframe generated using
+    pd.DataFrame(regionprops_table(labels, properties=properties))
+    where labels is a 2d numpy array generated using a function like
+    skimage.measure.label()
+
+    Returns nothing. Modifies <labeldf> in place
+    """
+    # We want to be able to use the centroid values as coordinates at some point so round them
+    # them with 0 decimal places and turn into integers
+    labeldf.loc[:, 'centroid_x'] = [np.int32(val) for val in np.round(labeldf['centroid-1'], decimals=0)]
+    labeldf.loc[:, 'centroid_y'] = [np.int32(val) for val in np.round(labeldf['centroid-0'], decimals=0)]
+    labeldf.loc[:, 'x_distance_from_center'] = np.abs(labeldf.centroid_x - center_x)
+    # Select the object with its center of gravity closest to the center
+    # as our blob of interest
+    labeldf.sort_values(by='x_distance_from_center', inplace=True)
+    labeldf.loc[:, 'dist_from_center_rank'] = range(len(labeldf))
+
+def x_y_coord_arrays_from_image(image):
+    """
+    Return X, Y
+
+    X and Y are each an np.ndarray of the same shape as <image>. 
+    X contains the x coordinate at each pixel in <image> and Y
+    contains the Y coordinate of each pixel
+    """
+    X, Y = np.meshgrid(np.arange(image.shape[1]), np.arange(image.shape[0]))
+
+    return X, Y
+
+def draw_mask_outlines(channel_stack, mask_stack, **kwargs):
+    """
+    In place, set the pixels in <channel_stack> on the border of the mask
+    in <mask_stack> to <fillvalue> (passed as kwarg, typically 0)
+
+    This is an easy way to draw outline ROIs on a grayscale image without
+    having to turn it into RGB.
+
+    Return nothing
+    """        
+    fillvalue = kwargs.get('fillvalue', 0)
+
+    for i, mask in enumerate(mask_stack):
+        [X, Y] = x_y_coord_arrays_from_image(mask)
+        xs = X[mask]
+        ys = Y[mask]
+
+        points = np.array([(xs[i], ys[i]) for i in range(len(xs))])
+        try:
+            hull = ConvexHull(points)
+            vertex_points = points[hull.vertices]
+            vertex_xs = [vert[0] for vert in vertex_points]
+            vertex_ys = [vert[1] for vert in vertex_points]
+
+            poly = polygon_perimeter(vertex_ys, vertex_xs, mask.shape)
+            poly_x = poly[1]
+            poly_y = poly[0]
+
+            channel_stack[i][poly_y, poly_x] = fillvalue
+        except Exception as e:
+            print(f'Convex hull finding failed at frame {i} with exception:\n{e}')
+
+def watershed_mask(image):
+    """
+    Run scikit-image watershed algorithm on binary <image>
+    Return watershed_labels, an np.array of same shape as 
+    <image> with pixels distinct blobs/objects equal to the
+    serial number of each distinct blob
+    """
+    distance = ndi.distance_transform_edt(image)
+    coords = peak_local_max(distance, footprint=np.ones((3, 3)), labels=image)
+    mask = np.zeros(distance.shape, dtype=bool)
+    mask[tuple(coords.T)] = True
+    markers, _ = ndi.label(mask)
+    watershed_labels = watershed(-distance, markers, mask=image)
+
+    return watershed_labels
+
 def segment_stack_with_fluor(stack, **kwargs):
     """
     <stack> is a 3d numpy grayscale array from fluorescence imaging
@@ -1371,23 +1456,28 @@ def segment_stack_with_fluor(stack, **kwargs):
             'centroid'
             ]
     )
-    cell_box_mask_width = kwargs.get('cell_box_mask_width', 11)
+    # area_max_cutoff = kwargs.get('area_max_cutoff', 250)
+    width_max_cutoff = kwargs.get('width_max_cutoff', 24)
+    cell_box_mask_width = kwargs.get('cell_box_mask_width', 9)
+    cell_box_mask_height = kwargs.get('cell_box_mask_width', 9)
     offset = kwargs.get('offset', 3)
     save_segmented_mask = kwargs.get('save_segmented_mask', True)
+    save_roi_outline_stack = kwargs.get('save_roi_outline_stack', True)
     filepath = kwargs.get('stackpath', os.path.join(os.getcwd(), 'unknown_stack.tif'))
     # Define a restricted ROI within which we'll calculate otsu threshold. We'll then 
     # for blobs with center of mass within this box + a little width
     n_frames = stack.shape[0]
-    width = stack.shape[1]
-    height = stack.shape[2]
+    width = stack.shape[2]
+    height = stack.shape[1]
     width_center = int(np.round(width/2, decimals=0))
+    print(f'Using center x coord {width_center}')
     height_center = int(np.round(height/2, decimals=0))
     x_bounds = (width_center - cell_box_mask_width, width_center + cell_box_mask_width)
-    y_bounds = (height_center - cell_box_mask_width, height_center + cell_box_mask_width)
+    y_bounds = (height_center - cell_box_mask_height, height_center + cell_box_mask_height)
     # Segment each frame in the stack using Otsu threshold. Only use data we expect
     # to be about within the cell to determine threshold so that we are finding the
     # threshold that defines nucleus vs. cytosol and not whole cell vs. background
-    thresholds = [threshold_otsu(image[x_bounds[0]:x_bounds[1], y_bounds[0]:y_bounds[1]]) for image in stack]
+    thresholds = [threshold_otsu(image[y_bounds[0]:y_bounds[1], x_bounds[0]:x_bounds[1]]) for image in stack]
     # Find the otsu threshold only within the expected cell area so that we don't segment
     # the whole cell, just the nucleus
     otsu_masks = [stack[frame] > threshold for frame, threshold in enumerate(thresholds)]
@@ -1396,7 +1486,7 @@ def segment_stack_with_fluor(stack, **kwargs):
     cell_box_masks = np.full_like(stack, False)
     # Use a slightly larger area for the cell_box_masks list that will be used to 
     # restrict which blob we determine to be the object of interest
-    cell_box_masks[:, x_bounds[0]-offset:x_bounds[1]+offset, y_bounds[0]-offset:y_bounds[1]+offset] = True
+    cell_box_masks[:, y_bounds[0]-offset:y_bounds[1]+offset, x_bounds[0]-offset:x_bounds[1]+offset] = True
     # Label individual objects found in the otsu thresholded masks
     object_labels = []
     for frame_number, mask in enumerate(otsu_masks):
@@ -1418,20 +1508,25 @@ def segment_stack_with_fluor(stack, **kwargs):
     for frame_number in range(n_frames):
         print(f'Segmenting frame {frame_number} of {n_frames}', end='\r')
         df = pd.DataFrame(regionprops_table(object_labels[frame_number], properties=properties))
-        # We want to be able to use the centroid values as coordinates at some point so round them
-        # them with 0 decimal places and turn into integers
-        df.loc[:, 'centroid_x'] = [np.int32(val) for val in np.round(df['centroid-1'], decimals=0)]
-        df.loc[:, 'centroid_y'] = [np.int32(val) for val in np.round(df['centroid-0'], decimals=0)]
-        df.loc[:, 'x_distance_from_center'] = np.abs(df.centroid_x)
-        # Select the object with its center of gravity closest to the center
-        # as our blob of interest
-        df.sort_values(by='x_distance_from_center', inplace=True)
-        df.loc[:, 'dist_from_center_rank'] = range(len(df))
+        annotate_label_df(df, width_center)
         objectdf = df[df.dist_from_center_rank==0]
         objectdf.loc[:, 'frame_number'] = frame_number
         object_index = objectdf.index.unique()[0]
         object_value_in_mask = object_index + 1
         objectmask = object_labels[frame_number] == object_value_in_mask
+        # If the found object mask is larger than expected, watershed it and 
+        # pick the closest new object to center
+        if objectdf.major_axis_length.values[0] >= width_max_cutoff:
+            print(f'Found large ROI, running watershed for frame {frame_number}')
+            watershed_labels = watershed_mask(objectmask)
+            watershedlabeldf = pd.DataFrame(regionprops_table(watershed_labels, properties=properties))
+            annotate_label_df(watershedlabeldf, width_center)
+            objectdf = watershedlabeldf[watershedlabeldf.dist_from_center_rank==0]
+            objectdf.loc[:, 'frame_number'] = frame_number
+            object_index = objectdf.index.unique()[0]
+            object_value_in_mask = object_index + 1
+            objectmask = watershed_labels == object_value_in_mask
+
         # Add final dataframe and mask for the object of interest to 
         # the lists that will be returned
         dfs.append(objectdf)
@@ -1439,7 +1534,52 @@ def segment_stack_with_fluor(stack, **kwargs):
 
     if save_segmented_mask:
         maskstacksavepath = filepath.replace('.tif', '_mask.tif')
-        io.imsave(maskstacksavepath, io.concatenate_images([mask*1 for mask in objectmasks]), check_contrast=False)
+        masklist = [mask*-1 for mask in objectmasks]
+        maskstack = io.concatenate_images(masklist)
+        io.imsave(maskstacksavepath, maskstack, check_contrast=False)
         print(f'Saved segmented mask at\n{maskstacksavepath}')
+    if save_roi_outline_stack:
+        outlinesavepath = filepath.replace('.tif', '_drawn_ROIs.tif')
+        draw_mask_outlines(stack, objectmasks)
+        io.imsave(outlinesavepath, stack, check_contrast=False)
+        print(f'Saved segmented outlines at\n{outlinesavepath}')
     
     return dfs, objectmasks
+
+
+
+def measure_stack_with_mask(
+    stack,
+    objectdfs,
+    objectmasks,
+    channel_name
+):
+    """
+    Measure the mean, sum, and median of fluorescence values
+    within each mask in <objectmasks> in its respective frame
+    in <stack>. Add these values to each frame pd.DataFrame in
+    <objectdfs>. Label these new columns using <channel_name>
+
+    Returns nothing
+    """
+
+    keys = [
+            f'{channel_name}_mean',
+            f'{channel_name}_int',
+            f'{channel_name}_median' 
+    ]
+
+    for frame_number, mask in enumerate(objectmasks):
+        mean = np.mean(stack[frame_number][objectmasks[frame_number]])
+        integrated = np.sum(stack[frame_number][objectmasks[frame_number]])
+        median = np.median(stack[frame_number][objectmasks[frame_number]])
+
+        vals = [
+            mean,
+            integrated,
+            median
+        ]
+        valdict = dict(zip(keys, vals))
+
+        for key, val in valdict.items():
+            objectdfs[frame_number].loc[:, key] = val
