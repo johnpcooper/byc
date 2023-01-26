@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks, medfilt
+from scipy.signal import find_peaks
 from pykdtree.kdtree import KDTree
 
 def local_normalize(df, column_name, kernel_size, name_with_kernel=False):
@@ -25,58 +25,28 @@ def local_normalize(df, column_name, kernel_size, name_with_kernel=False):
     return df
 
 def mean_filter(df, column_name, kernel_size, name_with_kernel=False):
-    assert np.mod(kernel_size, 2) == 1, 'kernel_size must be odd and > 1'    
-    
-    offset = (kernel_size - 1)/2
+    assert np.mod(kernel_size, 2) == 1, 'kernel_size must be odd'
     
     new_col_name = f'{column_name}_meanfilt'
     if name_with_kernel:
         new_col_name = f'{new_col_name}_{kernel_size}'
     else:
         pass
-    
-    for i in range(len(df.loc[:, column_name])):
-        
-        lower = i - offset
-        upper = i + offset
-        if lower < 0:
-            upper = upper + abs(lower)
-            lower = 0
 
-        elif upper >=len(df.loc[:, column_name]):
-            upper = i
-            
-        mean_of_kernel = np.mean(df.loc[lower:upper, column_name])
-        df.loc[i, new_col_name] = mean_of_kernel
-        
-    # return df
+    df.loc[:, new_col_name] = df[column_name].rolling(kernel_size, center=True).mean()
 
 def median_filter(df, column_name, kernel_size, name_with_kernel=False):
-    assert np.mod(kernel_size, 2) == 1, 'kernel_size must be odd'    
-    
-    offset = (kernel_size - 1)/2
+    assert np.mod(kernel_size, 2) == 1, 'kernel_size must be odd'
     
     new_col_name = f'{column_name}_medfilt'
     if name_with_kernel:
         new_col_name = f'{new_col_name}_{kernel_size}'
     else:
         pass
+
+    df.loc[:, new_col_name] = df[column_name].rolling(kernel_size, center=True).median()
     
-    for i in range(len(df.loc[:, column_name])):
-        
-        lower = i - offset
-        upper = i + offset
-        if lower < 0:
-            upper = upper + abs(lower)
-            lower = 0
-            
-        elif upper >=len(df.loc[:, column_name]):
-            upper = i
-            
-        mean_of_kernel = np.median(df.loc[lower:upper, column_name])
-        df.loc[i, new_col_name] = mean_of_kernel
-        
-    # return df
+    
 
 def add_filtered_columnns(cell_df, column_name, local_norm_kernel_size=63, med_filter_kernel_size=3):
     """
