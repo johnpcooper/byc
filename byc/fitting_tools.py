@@ -541,20 +541,13 @@ def annotate_mdf_censors(mdf):
     """
     To prepare to fit survival curves to RLS data in the 
     master index dataframe (<mdf>), annotate whether death
-    and retention time in device were observed
+    and beginning of life were observed
     """
-    for i in mdf.index:
-        end_event_type = mdf.loc[i, 'end_event_type']
-        if end_event_type == 'death':
-            mdf.loc[i, 'rls_observed'] = True
-            mdf.loc[i, 'retention_observed'] = False
-        elif end_event_type == 'escape':
-            mdf.loc[i, 'rls_observed'] = False
-            mdf.loc[i, 'retention_observed'] = True
-        elif end_event_type == 'sen':
-            mdf.loc[i, 'rls_observed'] = False
-            mdf.loc[i, 'retention_observed'] = False
-    
+    mdf.loc[mdf.end_event_type=='death', 'rls_observed'] = True
+    mdf.loc[mdf.end_event_type=='sen', 'rls_observed'] = False
+    mdf.loc[mdf.end_event_type=='escape', 'rls_observed'] = False
+    mdf.loc[mdf.observed_since_start==False, 'rls_observed'] = False
+
     return mdf
 
 def survival_fit(table, **kwargs):

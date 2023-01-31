@@ -198,7 +198,7 @@ def align_fov(fov_index, byc_image_set, write_output=True, rotate=False, **kwarg
     # Registration typicall works better when I 
     # use an image later in the stack for
     base_image_index = int(len(rotated_channels['Brightfield'])/2)
-    base_image_index = 75
+    # base_image_index = 75
     base_image = rotated_channels['Brightfield'][base_image_index]
     # Calculate the tranlsational registration offsets
     offsets = registration.determine_offsets(base_image, rotated_channels['Brightfield'])

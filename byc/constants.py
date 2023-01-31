@@ -107,6 +107,7 @@ class Patterns(object):
         self.culture_condition = self.get_culture_condition()
         self.timepoint_mins = self.get_timepoint_mins()
         self.clone_number = self.get_clone_number()
+        self.cell_index = self.get_cell_index()
 
     def get_master_index_filename(self):
         """
@@ -276,6 +277,14 @@ class Patterns(object):
         """
         pattern = r'(.*)(bud_rois_df)(.*)(.csv$)'
         return pattern
+
+    def get_cell_index(self):
+        """
+        Return pattern for finding cell index string
+        like "cell001" in filenames and other kinds of
+        text
+        """
+        pattern = r'(.*)'
 
 patterns = Patterns()
 patterns_list = [patterns.genotype,

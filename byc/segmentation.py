@@ -24,7 +24,7 @@ from matplotlib.path import Path
 
 from read_roi import read_roi_file, read_roi_zip
 
-from byc import constants, utilities, files, standard_analysis, plotting
+from byc import constants, utilities, files, standard_analysis, plotting, trace_tools, database
 
 class Cell_Stack(object):
     """
@@ -1459,7 +1459,8 @@ def segment_stack_with_fluor(stack, **kwargs):
     # area_max_cutoff = kwargs.get('area_max_cutoff', 250)
     width_max_cutoff = kwargs.get('width_max_cutoff', 24)
     cell_box_mask_width = kwargs.get('cell_box_mask_width', 9)
-    cell_box_mask_height = kwargs.get('cell_box_mask_width', 9)
+    cell_box_mask_height = kwargs.get('cell_box_mask_height', 9)
+    maskpath_suffix = kwargs.get('maskpath_suffix', '')
     offset = kwargs.get('offset', 3)
     save_segmented_mask = kwargs.get('save_segmented_mask', True)
     save_roi_outline_stack = kwargs.get('save_roi_outline_stack', True)
@@ -1530,21 +1531,27 @@ def segment_stack_with_fluor(stack, **kwargs):
         # Add final dataframe and mask for the object of interest to 
         # the lists that will be returned
         dfs.append(objectdf)
-        objectmasks.append(objectmask)
+        objectmasks.append(objectmask)        
 
     if save_segmented_mask:
         maskstacksavepath = filepath.replace('.tif', '_mask.tif')
+        if maskpath_suffix != '':
+            maskstacksavepath = maskstacksavepath.replace('.tif', f'_{maskpath_suffix}.tif')
         masklist = [mask*-1 for mask in objectmasks]
         maskstack = io.concatenate_images(masklist)
         io.imsave(maskstacksavepath, maskstack, check_contrast=False)
         print(f'Saved segmented mask at\n{maskstacksavepath}')
+    else:
+        maskstacksavepath = None
     if save_roi_outline_stack:
         outlinesavepath = filepath.replace('.tif', '_drawn_ROIs.tif')
+        if maskpath_suffix != '':
+            outlinesavepath = outlinesavepath.replace('.tif', f'_{maskpath_suffix}.tif')
         draw_mask_outlines(stack, objectmasks)
         io.imsave(outlinesavepath, stack, check_contrast=False)
         print(f'Saved segmented outlines at\n{outlinesavepath}')
     
-    return dfs, objectmasks
+    return dfs, objectmasks, maskstacksavepath
 
 
 
@@ -1552,7 +1559,11 @@ def measure_stack_with_mask(
     stack,
     objectdfs,
     objectmasks,
-    channel_name
+    channel_name,
+    returncelltracedf=False,
+    var_to_exclude_rois='major_axis_length',
+    set_outliers_to_nan=True,
+    **kwargs
 ):
     """
     Measure the mean, sum, and median of fluorescence values
@@ -1560,8 +1571,10 @@ def measure_stack_with_mask(
     in <stack>. Add these values to each frame pd.DataFrame in
     <objectdfs>. Label these new columns using <channel_name>
 
-    Returns nothing
+    if <returncelltracedf>, 
+    return concatenated pd.DataFrame of each objectdf per frame
     """
+    kernel_sizes = kwargs.get('kernel_sizes', [3, 5, 7])
 
     keys = [
             f'{channel_name}_mean',
@@ -1570,9 +1583,9 @@ def measure_stack_with_mask(
     ]
 
     for frame_number, mask in enumerate(objectmasks):
-        mean = np.mean(stack[frame_number][objectmasks[frame_number]])
-        integrated = np.sum(stack[frame_number][objectmasks[frame_number]])
-        median = np.median(stack[frame_number][objectmasks[frame_number]])
+        mean = np.mean(stack[frame_number][mask])
+        integrated = np.sum(stack[frame_number][mask])
+        median = np.median(stack[frame_number][mask])
 
         vals = [
             mean,
@@ -1583,3 +1596,168 @@ def measure_stack_with_mask(
 
         for key, val in valdict.items():
             objectdfs[frame_number].loc[:, key] = val
+    
+    celltracedf = pd.concat(objectdfs, sort=False)
+    celltracedf.sort_values(by='frame_number', ascending=True, inplace=True)
+    # Set measurements made with outlier ROI sizes to NaN so they don't skew
+    # the sliding window measurements etc.
+    roi_size_minimum = celltracedf[var_to_exclude_rois].median() - np.std(celltracedf[var_to_exclude_rois])
+    for colname in keys:
+        if set_outliers_to_nan:
+            print(f'Tossing outliers')
+            celltracedf.loc[celltracedf[var_to_exclude_rois]<=roi_size_minimum, colname] = np.nan
+            n_bad_rois = len(celltracedf.loc[celltracedf[var_to_exclude_rois]<=roi_size_minimum, colname])
+            total_rois = len(celltracedf)
+            print(f'Threw out {n_bad_rois} of {total_rois} frames with ROI {var_to_exclude_rois} less than {roi_size_minimum}')
+        # Median filter the data
+        for kernsize in kernel_sizes:
+            trace_tools.median_filter(celltracedf, colname, kernsize, name_with_kernel=True)
+            trace_tools.mean_filter(celltracedf, colname, kernsize, name_with_kernel=True)
+
+    if returncelltracedf:
+        return celltracedf
+
+def segment_and_measure_byc_dataset(
+    mdf,
+    collection_interval_minutes=10,
+    maskpath_suffix='',
+    channel_to_segment='gfp',
+    channels_to_measure=['gfp'],
+    var_to_exclude_rois='major_axis_length',
+    set_outliers_to_nan=True,
+    **kwargs
+):
+    cell_indices = mdf.cell_index.unique()
+    celldfs = []
+    for i in cell_indices:
+        filepath = mdf.loc[i, f'{channel_to_segment}_stack_path']
+        stack = io.imread(filepath)
+
+        objectdfs, objectmasks, maskpath = segment_stack_with_fluor(
+            stack,
+            stackpath=filepath,
+            maskpath_suffix=maskpath_suffix)
+        args = [
+            stack,
+            objectdfs,
+            objectmasks,
+            channels_to_measure[0]
+            ]
+
+        celldf = measure_stack_with_mask(
+            *args,
+            returncelltracedf=True,
+            var_to_exclude_roi=var_to_exclude_rois,
+            set_outliers_to_nan=set_outliers_to_nan)
+        celldf.reset_index(inplace=True)
+        celldf.loc[:, 'cell_index'] = i
+        celldf.loc[:, 'mask_stack_path'] = maskpath
+        celldf.loc[:, 'mask_stack_relpath'] = utilities.get_relpath(maskpath)
+        for col in mdf.columns:
+            if col not in celldf.columns:
+                celldf.loc[:, col] = mdf.loc[i, col]
+        celldf.loc[:, 'frame'] = celldf.frame_number
+        celldf.loc[:, 'hours'] = (celldf.frame*collection_interval_minutes)/60
+        celldfs.append(celldf)
+
+    return celldfs
+
+def refine_and_annotate_celldfs(
+    celldfs,
+    mdf,
+    collection_interval_minutes=10,
+    channels_to_normalize=['gfp'],
+    yvars=['_mean'],
+    channel_auto_fluors=[850],
+):
+    """
+    On each celldf in <celldfs>, annotate cell cycle information,
+    throw out measurements made using bad ROIs, and normalize
+    the fluorescence measurements according to <yvars>
+
+    Return nothing as <celldfs> are modified inplace
+    """
+
+    for cell_index, celldf in enumerate(celldfs):
+        exptname = celldf.loc[0, 'exptname']
+        compdir = os.path.join(constants.byc_data_dir, celldf.loc[0, 'compartment_reldir'])
+        celldf.loc[:, 'frame'] = celldf.frame_number
+        # Read in crop rois .zip as a dataframe
+        crop_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_crop_rois.zip'
+        crop_rois_path = os.path.join(compdir, crop_rois_fn)
+        crop_rois_df = files.read_rectangular_rois_as_df(crop_rois_path)
+        print(f'Read crop_rois df from\n{crop_rois_path}')
+        crop_rois_df.sort_values(by='position', ascending=True, inplace=True)
+        crop_rois_df.loc[:, 'frame_absolute'] = crop_rois_df.position - 1
+        first_crop_frame = crop_rois_df.frame_absolute.min()
+        celldf.loc[:, 'first_crop_frame'] = first_crop_frame
+        # Frame number in the celldf starts at the first frame
+        # in the cropped stack which could start anywhere in the
+        # original data. frame number in crop and bud roi files
+        # are absolute in the original data
+        celldf.loc[:, 'frame_absolute'] = first_crop_frame + celldf.frame
+        # Read in bud rois .zip as a dataframe
+        bud_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
+        bud_rois_path = os.path.join(compdir, bud_rois_fn)
+        bud_rois_df = files.read_rectangular_rois_as_df(bud_rois_path)
+        print(f'Read bud rois df from\n{bud_rois_path}')
+        bud_rois_df.sort_values(by='position', ascending=True, inplace=True)
+        bud_rois_df.reset_index(inplace=True)
+        database.annotate_daughter_shapes(bud_rois_df)
+        n_long_buds = len(bud_rois_df[bud_rois_df.bud_shape=='long'])
+        rls = len(bud_rois_df) - 1
+        bud_rois_df.loc[:, 'frame_absolute'] = bud_rois_df.position - 1
+        # Calculate the cell cycle duration for each bud appearance
+        bud_rois_df.loc[bud_rois_df.index[0:-2], 'cycle_duration_frames'] = np.diff(bud_rois_df['position'])[0:-1]
+        cycle_duration_hours = (bud_rois_df.cycle_duration_frames*collection_interval_minutes)/60
+        bud_rois_df.loc[:, 'cycle_duration_hours'] = cycle_duration_hours
+        last_bud_frame = bud_rois_df.frame_absolute[bud_rois_df.index[-2]]
+        frame_before_death = bud_rois_df.frame_absolute[bud_rois_df.index[-1]]
+        # Annotate information determined above on the celldf trace
+        celldf.loc[:, 'bud_rois_filename'] = bud_rois_fn
+        celldf.loc[:, 'bud_rois_path'] = bud_rois_path
+        celldf.loc[:, 'n_long_buds'] = n_long_buds
+        celldf.loc[:, 'rls'] = rls
+        if n_long_buds > 0:
+            celldf.loc[:, 'produced_elongated_daughter'] = True
+        else:
+            celldf.loc[:, 'produced_elongated_daughter'] = False
+        celldf.loc[:, 'frames_after_last_bud'] = celldf.loc[:, 'frame_absolute'] - last_bud_frame
+        celldf.loc[:, 'hours_after_last_bud'] = (celldf.loc[:, 'frames_after_last_bud']*collection_interval_minutes)/60
+        # The last frame in the bud roi set is the frame before the cell lyses
+        # so add 1 to frame_before_death to get an accurate frame of death
+        celldf.loc[:, 'death_frame_absolute'] = frame_before_death + 1
+        celldf.loc[:, 'frames_after_death'] = celldf.loc[:, 'frame_absolute'] - celldf.death_frame_absolute
+        celldf.loc[:, 'hours_after_death'] = (celldf.loc[:, 'frames_after_death']*collection_interval_minutes)/60
+        # Create a dictionary of which frames are within which cell division
+        # Only do this up to the second to last frame in the bud_roi_df
+        # because the last frame is the death frame, not a bud appearance
+        for bud_idx in bud_rois_df.index[:-1]:
+            # print(f'Cycle index = {bud_idx}')
+            start_frame = bud_rois_df.loc[bud_idx, 'frame_absolute']
+            # print(f'Start frame = {start_frame}')
+            end_frame = bud_rois_df.loc[bud_idx+1, 'frame_absolute']
+            if bud_idx == bud_rois_df.index.max() - 1:        
+                frames_within_division = celldf.frame_absolute.between(start_frame, end_frame, inclusive='both')
+            else:
+                frames_within_division = celldf.frame_absolute.between(start_frame, end_frame, inclusive='left')
+            # print(f'End frame = {end_frame}')
+            # 1 based index for bud number
+            celldf.loc[frames_within_division, 'bud_number'] = np.int16(bud_idx + 1)
+            # Annotate how long the cell cycle lasted
+            celldf.loc[frames_within_division, 'cycle_duration_frames'] = bud_rois_df.loc[bud_idx, 'cycle_duration_frames']
+            celldf.loc[frames_within_division, 'cycle_duration_hours'] = bud_rois_df.loc[bud_idx, 'cycle_duration_hours']
+            # Number of buds that will be produced before death (senescence proximity)
+            n_buds_remaining = bud_rois_df.index[:-1].max() - bud_idx
+            celldf.loc[frames_within_division, 'dist_from_sen'] = n_buds_remaining    
+        # Annotate the celldf (tracedf) with information from the master index
+        for col in mdf.columns:
+            if col not in celldf.columns:
+                celldf.loc[:, col] = mdf.set_index('cell_index').loc[cell_index, col]
+        # Do some normalizations of signal variables of interest
+        for idx, channel in enumerate(channels_to_normalize):
+            for var in yvars:
+                yvar_colname = f'{channel}_{var}'
+                celldf.loc[:, f'{yvar_colname}_norm_to_mean'] = celldf.loc[:, yvar_colname]/celldf.loc[:, yvar_colname].mean()
+                celldf.loc[:, f'{yvar_colname}_bg_norm'] = celldf.loc[:, yvar_colname]/channel_auto_fluors[idx]
+                celldf.loc[:, f'{yvar_colname}_min_norm'] = celldf.loc[:, yvar_colname]/celldf.loc[:, yvar_colname].min()

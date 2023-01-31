@@ -5,8 +5,9 @@ import tkinter as tk
 import tkinter.filedialog as dia
 
 import pandas as pd
+import numpy as np
 
-from byc import constants
+from byc import constants, files
 
 def set_fp(prompt):
 
@@ -99,15 +100,12 @@ def get_relpath(abspath):
     # upstream part of path should either be in legacy
     # directory or in <byc source path>\data\<relpath>
     abspath = os.path.abspath(abspath)
-    possibles = [constants.legacy_byc_data_dir,
-                 constants.byc_data_dir]
-    relpath = None
-    for query in possibles:
-        #print(f"Checking:\n{abspath}\nfor:\n{query}")
-        if abspath.find(query) == 0:
-            relpath = abspath.replace(query, '')
-        else:
-            pass
+    query = constants.byc_data_dir    
+    print(f"Checking:\n{abspath}\nfor:\n{query}")
+    if abspath.find(query) == 0:
+        relpath = abspath.replace(query, '')
+    else:
+        pass
         
     if relpath != None:
         newabspath = os.path.join(constants.byc_data_dir, relpath)
@@ -212,4 +210,177 @@ def exptname_from_compartment(compartmentdir_or_name):
 
     return exptname
 
+def get_cell_indices_in_compartment(compartmentdir, **kwargs):
+    filenames = os.listdir(compartmentdir)
+    indices = '|'.join([str(num).zfill(3) for num in range(1000)])
+    cellindexpattern = f"cell({indices})"
 
+    cellindexpattern = kwargs.get('cellindexpattern', cellindexpattern)
+
+    cell_indices = [re.search(cellindexpattern, fn).groups()[0] for fn in filenames if re.search(cellindexpattern, fn)]
+    cell_indices = np.array([np.int32(num) for num in cell_indices])
+    cell_indices = np.unique(cell_indices)
+
+    return cell_indices
+
+def annotate_channel_paths_in_mdf(mdf, **kwargs):
+
+    channel_stack_kw = kwargs.get('channel_stack_kw', '_stack.tif')
+    indices = '|'.join([str(num).zfill(3) for num in range(1000)])
+    cellindexpattern = f"cell({indices})"
+    indices = '|'.join([str(num).zfill(2) for num in range(100)])
+    fovpattern = f"xy({indices})"
+    possible_channels = [
+    'bf',
+    'bfp',
+    'gfp',
+    'yfp',
+    'mko',
+    'rfp'
+    ]
+    groups = '|'.join(possible_channels)
+    channelpattern = f'({groups})'    
+    
+    compdir = mdf.loc[0, 'compartment_dir']
+    allfilenames = os.listdir(compdir)
+    for fn in allfilenames:
+        channel_stack_conditions = [
+            fn[-len(channel_stack_kw):] == channel_stack_kw,
+            re.search(cellindexpattern, fn),
+            re.search(fovpattern, fn)
+        ]
+        if channel_stack_conditions[0] and channel_stack_conditions[1] and channel_stack_conditions[2]:
+            # This is a cell crop channel stack
+            cell_index = np.int32(re.search(cellindexpattern, fn).groups()[0])
+            fov = np.int32(re.search(fovpattern, fn).groups()[0])
+            channel_name = re.search(channelpattern, fn).group()
+            channel_stack_path = os.path.join(compdir, fn)
+            channel_stack_relpath = get_relpath(channel_stack_path)
+            mdf.loc[cell_index, f'{channel_name}_stack_path'] = channel_stack_path
+            mdf.loc[cell_index, f'{channel_name}_stack_relpath'] = channel_stack_relpath
+
+def annotate_bud_and_crop_paths_in_mdf(mdf, **kwargs):
+
+    compdir = mdf.loc[0, 'compartment_dir']
+    exptname = mdf.loc[0, 'exptname']
+
+    cell_indices_strs = [val.zfill(3) for val in mdf.index.astype(str)]
+
+    # Set bud roi path location information
+    bud_roi_fns = [f'{exptname}_cell{cell_index_str}_bud_rois.zip' for cell_index_str in cell_indices_strs]
+    bud_roi_paths = [os.path.join(compdir, fn) for fn in bud_roi_fns]
+    bud_roi_relpaths = [get_relpath(path) for path in bud_roi_paths]
+    mdf.loc[:, 'bud_roi_set_path'] = bud_roi_paths
+    mdf.loc[:, 'bud_roi_set_relpath'] = bud_roi_relpaths
+    # Set crop roi path location information
+    crop_roi_fns = [f'{exptname}_cell{cell_index_str}_crop_rois.zip' for cell_index_str in cell_indices_strs]
+    crop_roi_paths = [os.path.join(compdir, fn) for fn in crop_roi_fns]
+    crop_roi_relpaths = [get_relpath(path) for path in crop_roi_paths]
+    mdf.loc[:, 'crop_roi_set_path'] = crop_roi_paths
+    mdf.loc[:, 'crop_roi_set_relpath'] = crop_roi_relpaths
+
+def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
+    """
+    bud and crop df .csvs contain information entered during data annotation
+    and roi .zip file saving using imagejpc
+    """
+
+    compdir = mdf.loc[0, 'compartment_dir']
+    exptname = mdf.loc[0, 'exptname']
+
+    cell_indices_strs = [val.zfill(3) for val in mdf.index.astype(str)]
+
+    # Set bud roi path location information
+    bud_roi_fns = [f'{exptname}_cell{cell_index_str}_bud_rois.zip' for cell_index_str in cell_indices_strs]
+    bud_roi_paths = [os.path.join(compdir, fn) for fn in bud_roi_fns]
+    bud_roi_relpaths = [get_relpath(path) for path in bud_roi_paths]
+    mdf.loc[:, 'bud_roi_set_path'] = bud_roi_paths
+    mdf.loc[:, 'bud_roi_set_relpath'] = bud_roi_relpaths
+    # Set crop roi path location information
+    crop_roi_fns = [f'{exptname}_cell{cell_index_str}_crop_rois.zip' for cell_index_str in cell_indices_strs]
+    crop_roi_paths = [os.path.join(compdir, fn) for fn in crop_roi_fns]
+    crop_roi_relpaths = [get_relpath(path) for path in crop_roi_paths]
+    mdf.loc[:, 'crop_roi_set_path'] = crop_roi_paths
+    mdf.loc[:, 'crop_roi_set_relpath'] = crop_roi_relpaths
+
+def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
+    """
+    bud and crop df .csvs contain information entered during data annotation
+    and roi .zip file saving using imagejpc
+
+    Return nothing
+    """
+    compartment_reldir = get_relpath(mdf.loc[0, 'compartment_dir'])
+    compdir = os.path.join(constants.byc_data_dir, compartment_reldir)
+    filenames = os.listdir(compdir)
+    bud_rois_df_kw = '_bud_rois_df.csv'
+    crop_rois_df_kw = '_crop_rois_df.csv'
+    crop_rois_df_paths = [os.path.join(compdir, fn) for fn in filenames if crop_rois_df_kw in fn]
+    bud_rois_df_paths = [os.path.join(compdir, fn) for fn in filenames if bud_rois_df_kw in fn]
+    crop_rois_df_relpaths = [get_relpath(path) for path in crop_rois_df_paths]
+    bud_rois_df_relpaths = [get_relpath(path) for path in bud_rois_df_paths]
+    mdf.loc[:, 'crop_rois_df_path'] = crop_rois_df_paths
+    mdf.loc[:, 'bud_rois_df_path'] = bud_rois_df_paths
+    mdf.loc[:, 'crop_rois_df_relpath'] = crop_rois_df_relpaths
+    mdf.loc[:, 'bud_rois_df_relpath'] = bud_rois_df_relpaths
+
+    crop_rois_dfs = [pd.read_csv(path) for path in crop_rois_df_paths]
+    bud_rois_dfs = [pd.read_csv(path) for path in bud_rois_df_paths]
+
+    crop_rois_alldf = pd.concat(crop_rois_dfs).reset_index()
+    bud_rois_alldf = pd.concat(bud_rois_dfs).reset_index()
+    # End event type is only accurately annotated in the
+    # bud_rois_df so don't annotate it here
+    for col in crop_rois_alldf.columns:
+        if col not in mdf.columns and col != 'end_event_type':
+            mdf.loc[:, col] = crop_rois_alldf.loc[:, col]
+    # Contains aggregate is only accurately annotated in the 
+    # crop_rois_df so don't annotate it here
+    for col in bud_rois_alldf.columns:
+        if col not in mdf.columns and col != 'contains_aggregate':
+            mdf.loc[:, col] = bud_rois_alldf.loc[:, col]
+
+
+
+def generate_mdf(exptname, compartmentname):
+    """
+    2nd generation master index dataframe generation
+    Scan the directory matching <compartmentname> for 
+    files corresponding to individual cell stacks, bud
+    rois, and crop rois etc.
+
+    Return the generated master_index_df (mdf)
+    """    
+    compdir = files.get_byc_compartmentdir(exptname, compartmentname)
+    compdir = os.path.abspath(compdir)
+
+    indices = '|'.join([str(num).zfill(3) for num in range(1000)])
+    cellindexpattern = f"cell({indices})"
+
+    indices = '|'.join([str(num).zfill(2) for num in range(100)])
+    fovpattern = f"xy({indices})"
+
+    possible_channels = [
+        'bf',
+        'bfp',
+        'gfp',
+        'yfp',
+        'mko',
+        'rfp'
+    ]
+    groups = '|'.join(possible_channels)
+    channelpattern = f'({groups})'
+    cell_indices = get_cell_indices_in_compartment(compdir)
+    mdf = pd.DataFrame({
+        'cell_index': cell_indices
+    })
+
+    mdf.loc[:, 'compartment_dir'] = compdir
+    mdf.loc[:, 'compartment_reldir'] = get_relpath(compdir)
+    mdf.loc[:, 'exptname'] = exptname
+    mdf.set_index('cell_index', inplace=True)
+    annotate_channel_paths_in_mdf(mdf)
+    annotate_bud_and_crop_paths_in_mdf(mdf)
+    annotate_bud_and_crop_df_info_in_mdf(mdf)
+
+    return mdf
