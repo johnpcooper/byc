@@ -139,17 +139,19 @@ def record_cell_roi_set(cell_index,
     # xy FOVs for that flow compartment and therefore 
     # holds all data for a single isolated genetic
     # + environmental etc. condition
+    keyword = 'data'
     compartment_dir = os.path.dirname(active_imp_path)
-    compartment_reldir = utilities.get_relpath(compartment_dir)
+    compartment_reldir = compartment_dir[compartment_dir.rindex(keyword) + len(keyword)+1:]
     # Extract some information from the active image filename
     xy = int(imp_filename[imp_filename.rindex('xy') + 2: imp_filename.rindex('xy') + 4])
     date = imp_filename[0:8]
 
     # Create path names relative to byc source/data directory    
-    active_imp_rel_path = utilities.get_relpath(active_imp_path)
-    roi_set_rel_path = utilities.get_relpath(roi_set_save_path)
+    # active_imp_rel_path = utilities.get_relpath(active_imp_path)
+    active_imp_rel_path = active_imp_path[active_imp_path.rindex(keyword) + len(keyword)+1:]
+    roi_set_rel_path = roi_set_save_path[roi_set_save_path.rindex(keyword) + len(keyword)+1:]
     if active_imp_rel_path == None and roi_set_rel_path == None:
-        print(f"Could not find byc_data_dir ({constants.byc_data_dir}) in path:/n{active_imp_rel_path}")
+        print(f"Could not find byc_data_dir ({constants.byc_data_dir}) in path:/n{active_imp_path}")
         print(f"\nMake sure you're analyzing data in byc_data_dir")
 
     else:
@@ -211,5 +213,3 @@ if __name__ == "__main__":
     else:
         print(f'Got {len(sys.argv)} variables')
         # print("wrong number of arg variables. Should be 7")
-
-
