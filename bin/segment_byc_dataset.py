@@ -32,7 +32,7 @@ if __name__=="__main__":
         # compartment directory
         splitname = compartmentname.split('_')
         exptname = '_'.join(splitname[0:2])
-        channels = ['bf', 'yfp']
+        channels = ['bf', 'gfp']
         chase_frame_dict = {
             0: 14,
             148: 158
@@ -65,8 +65,23 @@ if __name__=="__main__":
         'channels': channels
     }
     print(f'Proceeding with compartment {compartmentname} from expt {exptname}')
+    # Check which cells have already been quantified
+    filename = f'{exptname}_alldf.csv'
+    compartmentdir = os.path.join(constants.byc_data_dir, f'{exptname}/{compartmentname}')
+    savepath = os.path.join(compartmentdir, filename)
+    if os.path.exists(savepath):
+        print(f'Found measurements at\n{savepath}')
+        meastable = pd.read_csv(savepath)
+        excluded_cell_indices = meastable.cell_index.unique()
+        print(f'Excluding cells {np.min(excluded_cell_indices)} to {np.max(excluded_cell_indices)}')
+    else:
+        print(f'No previous measurements made at\n{savepath}')
+        excluded_cell_indices = []
+
     mdf = sa.create_and_annotate_mdf(*args, **kwargs)
     mdf.loc[:, 'channels_collected'] = ' '.join(channels)
+    mdf = mdf[mdf.cell_index.isin(excluded_cell_indices)==False]
+    print(f'Analyzing cells\n{mdf.cell_index.unique()}')
     ds = sa.bycDataSet(mdf=mdf)
     # Now need to roll the stuff below into a single function
     # that reads in crop_roi_dfs and annotates fluorescence
@@ -82,7 +97,6 @@ if __name__=="__main__":
     # buffer size used in the crop. Thus, I concatanate after that function
     # has been run
     crop_rois_df = pd.concat(crop_roi_dfs, ignore_index=True)
-
     # Find radial intensity peaks and segment cell areas
     peak_idx_to_use=0
     allframesdfs = []
@@ -92,9 +106,9 @@ if __name__=="__main__":
                 bfcellstacksdict]
 
         kwargs = {
-            'use_img_inverse': False,
-            'use_constant_circle_roi': True,
-            'default_radius_px': 9
+            'use_img_inverse': True,
+            'use_constant_circle_roi': False,
+            'default_radius_px': 12
         }
         allframesdf = segmentation.cell_stack_I_by_distance_and_theta(*args, **kwargs)
         # Filter outliers from within theta groups
@@ -113,6 +127,12 @@ if __name__=="__main__":
     writepath = os.path.join(writedir, 'segmentation_df.csv')
     if write_segmentation_df:
         print(f'Writing segmentation dataframe to\n{writepath}')
+        if os.path.exists(writepath):
+            olddf = pd.read_csv(writepath)
+            alldf = pd.concat([olddf, alldf])
+            alldf.index = range(len(alldf))
+        else:
+            print(f'No existing segmentation dataframe found at\n{writepath}')
         alldf.to_csv(writepath, index=False)
         print(f'Wrote segmentation dataframe to\n{writepath}')
     else:
@@ -133,9 +153,15 @@ if __name__=="__main__":
                                         measurement_stack,
                                         frame_idx)
                 frame_cell_masks.append(mask)
-                measurement = np.mean(measurement_stack[int(frame_idx)][mask])
-                measurements.append(measurement)
-                allframesdf.loc[allframesdf.frame_rel==frame_idx, f'Mean_{channel}_auto'] = measurement
+                # The mask is a 2d array of True/False so number of pixels in the 
+                # cell ROI is the sum of the array (True + True = 2)
+                cell_area_px = np.sum(mask)
+                mean_intensity = np.mean(measurement_stack[int(frame_idx)][mask])                
+                integrated_intensity = np.sum(measurement_stack[int(frame_idx)][mask])
+                measurements.append(mean_intensity)
+                allframesdf.loc[allframesdf.frame_rel==frame_idx, f'{channel}_mean'] = mean_intensity
+                allframesdf.loc[allframesdf.frame_rel==frame_idx, f'{channel}_int'] = integrated_intensity
+                allframesdf.loc[allframesdf.frame_rel==frame_idx, f'.Cell_area_px_{channel}'] = cell_area_px
         allframesdfs_measured.append(allframesdf)
         
     allmeasureddf = pd.concat(allframesdfs_measured, ignore_index=True)
@@ -143,6 +169,12 @@ if __name__=="__main__":
     celldfs = [allmeasureddf[allmeasureddf.cell_index==cidx] for cidx in allmeasureddf.cell_index.unique()]
     
     path = os.path.join(writedir, f"{compartmentname}_alldf_measured.csv.gzip")
+    if os.path.exists(path):
+        print(f'Measured segmentation dataframe exists at\n{path}')
+        oldmeasureddf = pd.read_csv(path, compression='gzip')
+        allmeasureddf = pd.concat([oldmeasureddf, allmeasureddf])
+        allmeasureddf.index = range(len(allmeasureddf))
+        print(f'Concatenated existing and new measured segmentation data')
     print(f'Writing measured segmentation dataframe to\n{path}')
     allmeasureddf.to_csv(path, index=False, compression='gzip')
     print(f'Wrote all trace measurements df at \n{path}')
@@ -154,5 +186,11 @@ if __name__=="__main__":
     table = pd.pivot_table(allmeasureddf, index=idx).reset_index()
     filename = f'{exptname}_alldf.csv'
     savepath = os.path.join(writedir, filename)
+    if os.path.exists(savepath):
+        print(f'Measured trace dataframe exists at\n{savepath}')
+        oldtracedf = pd.read_csv(savepath)
+        table = pd.concat([oldtracedf, table])
+        table.index = range(len(table))
+        print(f'Concatenated existing and new measured trace data')
     table.to_csv(savepath, index=False)
     print(f'Saved trace table at\n{savepath}')
