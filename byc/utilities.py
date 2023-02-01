@@ -91,32 +91,26 @@ def make_blank_master_index(exptdir, date, expttype='byc', write=True):
 
     return df, writepath
 
-def get_relpath(abspath):
+def get_relpath(abspath, **kwargs):
     """
-    Return the relative portion of the abspath
-    by replacing expected upstream abs path
-    (constants.byc_dat_dir etc.) with ''.
+    Return the path of <abspath> relative to the byc data
+    directory (defined in constants.byc_data_dir)
+
+    Right now this function just looks for the word "data"
+    in the path and the relative path is everything after that
+
+    Was having issues with matching actual paths to identify
+    which part of string is the byc_data_dir between OSs
     """
     # upstream part of path should either be in legacy
     # directory or in <byc source path>\data\<relpath>
-    abspath = os.path.abspath(abspath)
-    query = constants.byc_data_dir    
-    print(f"Checking:\n{abspath}\nfor:\n{query}")
-    if abspath.find(query) == 0:
-        relpath = abspath.replace(query, '')
+    keyword = kwargs.get('include_everything_after_string', 'data')
+    if keyword in abspath:
+        relpath = abspath[abspath.rindex(keyword) + len(keyword)+1:]
     else:
-        pass
-        
-    if relpath != None:
-        newabspath = os.path.join(constants.byc_data_dir, relpath)
-        if os.path.exists(newabspath):
-            return relpath
-        else:
-            print(f"constants.byc_data_dir + found relpath:\n{newabspath}\ndoes note exist!")
-            return relpath
-    else:
-        print(f"No match found after looking for:\b{possibles}\nin:\n{abspath}")
-        return relpath
+        print(f'{keyword} not found in path:\n{abspath}')
+        relpath = None
+    return relpath
 
 def get_master_index_tags(match):
     """
@@ -384,3 +378,29 @@ def generate_mdf(exptname, compartmentname):
     annotate_bud_and_crop_df_info_in_mdf(mdf)
 
     return mdf
+
+def check_bud_and_crop_roi_dfs(compartmentdir):
+    allfns = os.listdir(compartmentdir)
+    crop_zips = [fn for fn in allfns if fn[-4:]=='.zip' and 'crop' in fn]
+
+    crop_dfs = [fn for fn in allfns if re.search(constants.patterns.crop_roi_df_file, fn) != None]
+    buds_dfs = [fn for fn in allfns if re.search(constants.patterns.bud_roi_df_file, fn) != None]
+
+    def extract_cell_index(string):
+        rdx = string.rindex('cell')
+        number = string[rdx + 4: rdx + 7]
+
+        return int(number)
+
+
+    crop_cell_idxs = [extract_cell_index(fn) for fn in crop_dfs]
+    bud_cell_idxs = [extract_cell_index(fn) for fn in buds_dfs]
+
+    all_annotated_cell_indices = [extract_cell_index(fn) for fn in crop_zips]
+
+    missed_crop_dfs = [idx for idx in all_annotated_cell_indices if idx not in crop_cell_idxs]
+    missed_bud_dfs = [idx for idx in all_annotated_cell_indices if idx not in bud_cell_idxs]
+
+
+    print(f'Missing crop df .csv files for cells {missed_crop_dfs}')
+    print(f'Missing bud df .csv files for cells {missed_bud_dfs}')
