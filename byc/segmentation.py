@@ -1415,7 +1415,8 @@ def draw_mask_outlines(channel_stack, mask_stack, **kwargs):
 
             channel_stack[i][poly_y, poly_x] = fillvalue
         except Exception as e:
-            print(f'Convex hull finding failed at frame {i} with exception:\n{e}')
+            # print(f'Convex hull finding failed at frame {i} with exception:\n{e}')
+            pass
 
 def watershed_mask(image):
     """
@@ -1630,25 +1631,44 @@ def segment_and_measure_byc_dataset(
     cell_indices = mdf.cell_index.unique()
     celldfs = []
     for i in cell_indices:
-        filepath = mdf.loc[i, f'{channel_to_segment}_stack_path']
-        stack = io.imread(filepath)
+        stacktosegment_path = mdf.loc[i, f'{channel_to_segment}_stack_path']
+        stack = io.imread(stacktosegment_path)
 
         objectdfs, objectmasks, maskpath = segment_stack_with_fluor(
             stack,
-            stackpath=filepath,
+            stackpath=stacktosegment_path,
             maskpath_suffix=maskpath_suffix)
-        args = [
-            stack,
-            objectdfs,
-            objectmasks,
-            channels_to_measure[0]
-            ]
+        channel_dfs = []
+        for channel_name in channels_to_measure:
+            print(f'Measuring {channel_name} channel')
+            stacktomeasure_path = stacktosegment_path.replace(channel_to_segment, channel_name)
+            stacktomeasure = io.imread(stacktomeasure_path)
+            print(f'Read in stack from{stacktomeasure_path}')
+            args = [
+                stacktomeasure,
+                objectdfs,
+                objectmasks,
+                channel_name
+                ]
 
-        celldf = measure_stack_with_mask(
-            *args,
-            returncelltracedf=True,
-            var_to_exclude_roi=var_to_exclude_rois,
-            set_outliers_to_nan=set_outliers_to_nan)
+            channelcelldf = measure_stack_with_mask(
+                *args,
+                returncelltracedf=True,
+                var_to_exclude_roi=var_to_exclude_rois,
+                set_outliers_to_nan=set_outliers_to_nan)
+            channel_dfs.append(channelcelldf)
+        # Merge together indiviual channel fluorescence measurement
+        # dataframes into one celldf
+        if len(channel_dfs) == 1:
+            celldf = channel_dfs[0]
+        elif len(channel_dfs) == 2:
+            celldf = pd.merge(channel_dfs[0], channel_dfs[1])
+        elif len(channel_dfs) == 3:
+            celldf = pd.merge(channel_dfs[0], channel_dfs[1])
+            celldf = pd.merge(celldf, channel_dfs[2])
+        else:
+            print(f'No channel measurement dfs found')
+        
         celldf.reset_index(inplace=True)
         celldf.loc[:, 'cell_index'] = i
         celldf.loc[:, 'mask_stack_path'] = maskpath
