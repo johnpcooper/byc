@@ -17,5 +17,6 @@ read-roi
 Send2Trash
 tifffile
 virtualenvwrapper-win
-
-
+opencv-python
+lmfit
+lifelines
