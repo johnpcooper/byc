@@ -1640,10 +1640,10 @@ def segment_and_measure_byc_dataset(
             maskpath_suffix=maskpath_suffix)
         channel_dfs = []
         for channel_name in channels_to_measure:
-            print(f'Measuring {channel_name} channel')
+            # print(f'Measuring {channel_name} channel')
             stacktomeasure_path = stacktosegment_path.replace(channel_to_segment, channel_name)
             stacktomeasure = io.imread(stacktomeasure_path)
-            print(f'Read in stack from{stacktomeasure_path}')
+            # print(f'Read in stack from{stacktomeasure_path}')
             args = [
                 stacktomeasure,
                 objectdfs,
@@ -1666,8 +1666,14 @@ def segment_and_measure_byc_dataset(
         elif len(channel_dfs) == 3:
             celldf = pd.merge(channel_dfs[0], channel_dfs[1])
             celldf = pd.merge(celldf, channel_dfs[2])
-        else:
+        elif len(channel_dfs) == 4:
+            celldf = pd.merge(channel_dfs[0], channel_dfs[1])
+            celldf = pd.merge(celldf, channel_dfs[2])            
+            celldf = pd.merge(celldf, channel_dfs[3])
+        elif len(channel_dfs) == 0:
             print(f'No channel measurement dfs found')
+        else:
+            print(f'byc.segmentation module only accomodates up to 4 channels. Is easy to edit')
         
         celldf.reset_index(inplace=True)
         celldf.loc[:, 'cell_index'] = i

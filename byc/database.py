@@ -30,7 +30,6 @@ class DataBase():
     def __init__(self):
 
         expt_names = os.listdir(self.byc_data_dir)
-        expt_paths = [f'{self.byc_data_dir}\\{folder}' for folder in expt_names]
         self.trace_database_path = self._byc_trace_database_path
         self.trace_database_df = pd.read_csv(self.trace_database_path)
         self.master_index_dfs_dict = self.get_master_index_dfs_dict()

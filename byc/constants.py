@@ -28,7 +28,7 @@ source_path = source_path()
 database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_database.csv'),
                   'cell_roi_db_path': os.path.join(package_path, 'cell_roi_database.json')}
 
-byc_data_dir = os.path.join(source_path, 'data\\')
+byc_data_dir = os.path.join(source_path, 'data/')
 compartment_index_path = os.path.join(byc_data_dir, 'meta/compartments_index.csv')
 legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
 steady_state_data_dir = "C:\\Users\\johnp\\Box\\Finkelstein-Matouschek\\images\\"
