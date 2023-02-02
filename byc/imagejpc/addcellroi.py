@@ -132,8 +132,7 @@ def record_cell_roi_set(cell_index,
 
     write = kwargs.get('write', True)
     channels_collected = kwargs.get('channels_collected', 'bf yfp rfp')
-    imp_filename = utilities.filename_from_path(active_imp_path)
-    exptdir = get_exptdir(active_imp_path)
+    imp_filename = os.path.basename(active_imp_path)
     expt_type = 'byc'
     # Note: compartment_dir is the dir holding all
     # xy FOVs for that flow compartment and therefore 
@@ -145,7 +144,6 @@ def record_cell_roi_set(cell_index,
     # Extract some information from the active image filename
     xy = int(imp_filename[imp_filename.rindex('xy') + 2: imp_filename.rindex('xy') + 4])
     date = imp_filename[0:8]
-
     # Create path names relative to byc source/data directory    
     # active_imp_rel_path = utilities.get_relpath(active_imp_path)
     active_imp_rel_path = active_imp_path[active_imp_path.rindex(keyword) + len(keyword)+1:]
@@ -203,6 +201,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) == 8:
         print(f'Got {len(sys.argv)} arg variables variables from addcellROI.ijm')
+        print(f'Trying to run record roi set')
         record_cell_roi_set(sys.argv[1],
                               sys.argv[2],
                               sys.argv[3],
