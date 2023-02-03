@@ -653,14 +653,15 @@ def get_cell_crop_stack(cell_roi_df,
     cellstack, cell_roi_df = cropped_stack_from_cellroidf(*crop_args, **crop_kwargs)
     # Want to write cropped stack to same location it would be written if the cell
     # were segmented manually
-    files.add_cell_channel_crop_stack_paths(cell_roi_df, channels=[channel_name])
-    writepath_colname = f'{channel_name}_crop_stack_abspath'
-    writepath = cell_roi_df[writepath_colname].iloc[0]
+    date = str(int(cell_roi_df.date.iloc[0]))
+    xy = str(int(cell_roi_df.xy.iloc[0])).zfill(2)
+    cell_index_str = str(int(cell_roi_df.cell_index.iloc[0])).zfill(3)
+    filename = f'{date}_byc_xy{xy}_cell{cell_index_str}_{channel_name}_stack.tif'
     cell_index = cell_roi_df.cell_index.iloc[0]
     compartment_name = cell_roi_df.compartment_name.iloc[0]
     exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
     compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
-    auto_compartment_dir = f'{compartment_dir}_auto'
+    writepath = os.path.join(compartment_dir, filename)
     # Make a directory in which to save this next gen-generated cell
     # crop stack
     stack_path = writepath
