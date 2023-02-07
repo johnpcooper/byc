@@ -250,8 +250,8 @@ def annotate_channel_paths_in_mdf(mdf, **kwargs):
             channel_name = re.search(channelpattern, fn).group()
             channel_stack_path = os.path.join(compdir, fn)
             channel_stack_relpath = get_relpath(channel_stack_path)
-            mdf.loc[cell_index, f'{channel_name}_stack_path'] = channel_stack_path
-            mdf.loc[cell_index, f'{channel_name}_stack_relpath'] = channel_stack_relpath
+            mdf.loc[cell_index, f'{channel_name}_crop_stack_path'] = channel_stack_path
+            mdf.loc[cell_index, f'{channel_name}_crop_stack_relpath'] = channel_stack_relpath
 
 def annotate_bud_and_crop_paths_in_mdf(mdf, **kwargs):
 
@@ -336,7 +336,7 @@ def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
 
 
 
-def generate_mdf(exptname, compartmentname):
+def generate_mdf(exptname, compartmentname, **kwargs):
     """
     2nd generation master index dataframe generation
     Scan the directory matching <compartmentname> for 
@@ -344,26 +344,10 @@ def generate_mdf(exptname, compartmentname):
     rois, and crop rois etc.
 
     Return the generated master_index_df (mdf)
-    """    
+    """
+    channels = ['bf', 'yfp', 'rfp']
     compdir = files.get_byc_compartmentdir(exptname, compartmentname)
     compdir = os.path.abspath(compdir)
-
-    indices = '|'.join([str(num).zfill(3) for num in range(1000)])
-    cellindexpattern = f"cell({indices})"
-
-    indices = '|'.join([str(num).zfill(2) for num in range(100)])
-    fovpattern = f"xy({indices})"
-
-    possible_channels = [
-        'bf',
-        'bfp',
-        'gfp',
-        'yfp',
-        'mko',
-        'rfp'
-    ]
-    groups = '|'.join(possible_channels)
-    channelpattern = f'({groups})'
     cell_indices = get_cell_indices_in_compartment(compdir)
     mdf = pd.DataFrame({
         'cell_index': cell_indices
@@ -372,10 +356,13 @@ def generate_mdf(exptname, compartmentname):
     mdf.loc[:, 'compartment_dir'] = compdir
     mdf.loc[:, 'compartment_reldir'] = get_relpath(compdir)
     mdf.loc[:, 'exptname'] = exptname
+    mdf.loc[:, 'date'] = mdf.exptname.str[0:8]
+    mdf.loc[:, 'compartment_name'] = mdf.compartment_dir.apply(lambda x: os.path.basename(x))
     mdf.set_index('cell_index', inplace=True)
-    annotate_channel_paths_in_mdf(mdf)
     annotate_bud_and_crop_paths_in_mdf(mdf)
     annotate_bud_and_crop_df_info_in_mdf(mdf)
+    files.add_cell_channel_crop_stack_paths(mdf, channels=channels)
+    files.add_cell_channel_xy_source_stack_paths(mdf, channels=channels)
 
     return mdf
 

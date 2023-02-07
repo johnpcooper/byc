@@ -105,7 +105,21 @@ def add_cell_channel_crop_stack_paths(df, channels=['bf', 'yfp']):
         fileabspaths = constants.byc_data_dir + filerelpaths
         fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
 
-        df.loc[:, f'{channel}_crop_stack_abspath'] = fileabspaths
+        df.loc[:, f'{channel}_crop_stack_path'] = fileabspaths
+
+def add_cell_channel_xy_source_stack_paths(df, channels=['bf', 'yfp']):
+    
+    dates = df.date.astype(int).astype(str)
+    types = df.expt_type
+    xys = df.xy.astype(int).astype(str).str.zfill(2)
+
+    for channel in channels:
+        filenames = dates + '_' + types + '_xy' + xys + f'_{channel}_stack.tif'
+        filerelpaths = df.compartment_reldir.str.cat(filenames, sep='\\')
+        fileabspaths = constants.byc_data_dir + filerelpaths
+        fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
+
+        df.loc[:, f'{channel}_stack_path'] = fileabspaths
 
 def add_cell_measurement_roi_paths(df, channels=['bf', 'yfp'], source_col_suffix='_crop_stack_abspath'):
     

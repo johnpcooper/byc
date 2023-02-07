@@ -31,7 +31,7 @@ class Cell_Stack(object):
     Upon instantiation, this class will ask the user to select a master index
     .csv file containing cell indices. The methods of the class then operate
     on rois etc. referenced by the master index. For now, the only public variable
-    of this class is self.channel_names which is useful for saving stacks later.
+    of this class is self.channel_names which is useful for standard_analysisving stacks later.
     """
     
     def __init__(self, threshold_channel):
@@ -1204,7 +1204,7 @@ def get_cell_channel_stacks_from_fits_df(fits_df, cell_row_index):
 
     cellstacksdict = {}
     for channel in mdf.channels_collected.split():
-        cellstackpath_colname = f'{channel}_crop_stack_abspath'
+        cellstackpath_colname = f'{channel}_crop_stack_path'
         cellstackpath = mdf[cellstackpath_colname]
         print(f'Looking for {channel} cell stack at\n{cellstackpath}')
         xystackpath_colname = f'{channel}_stack_path'
@@ -1320,7 +1320,7 @@ def save_outline_rois_df(allframesdf):
 
     Return outlinedf
     """
-    outline_vertices_savepath = allframesdf.bf_crop_stack_abspath.iloc[0].replace('.tif', '_outline-vertices.csv')
+    outline_vertices_savepath = allframesdf.bf_crop_stack_path.iloc[0].replace('.tif', '_outline-vertices.csv')
     frames_table = allframesdf.set_index('frame_rel')
 
     framedfs = []
@@ -1632,7 +1632,7 @@ def segment_and_measure_byc_dataset(
     cell_indices = mdf.cell_index.unique()
     celldfs = []
     for i in cell_indices:
-        stacktosegment_path = mdf.loc[i, f'{channel_to_segment}_stack_path']
+        stacktosegment_path = mdf.loc[i, f'{channel_to_segment}_crop_stack_path']
         stack = io.imread(stacktosegment_path)
 
         objectdfs, objectmasks, maskpath = segment_stack_with_fluor(
@@ -1788,3 +1788,24 @@ def refine_and_annotate_celldfs(
                 celldf.loc[:, f'{yvar_colname}_norm_to_mean'] = celldf.loc[:, yvar_colname]/celldf.loc[:, yvar_colname].mean()
                 celldf.loc[:, f'{yvar_colname}_bg_norm'] = celldf.loc[:, yvar_colname]/channel_auto_fluors[idx]
                 celldf.loc[:, f'{yvar_colname}_min_norm'] = celldf.loc[:, yvar_colname]/celldf.loc[:, yvar_colname].min()
+
+def write_cell_crop_stacks(mdf, return_cellstacks_dict=False):
+    """
+    For each cell in the master index dataframe <mdf>,
+    read in its source xy position channel stack, crop
+    out the cell according to its cell_crop_rois.zip file
+
+    If <return_cellstacks_dict>, return a dictionary
+    """
+    ds = standard_analysis.bycDataSet(mdf=mdf)
+    # Now need to roll the stuff below into a single function
+    # that reads in crop_roi_dfs and annotates fluorescence
+    # 
+    crop_roi_dfs = make_cell_roi_dfs(mdf, bycdataset=ds)
+    channels_list = mdf.channels_collected.iloc[0].split()
+    cellstacksdicts_dict = {}
+    for channel in channels_list:
+        cellstacks, cellstacksdict = get_cell_stacks(crop_roi_dfs, channel_name=channel)
+        cellstacksdicts_dict[channel] = cellstacksdict
+    if return_cellstacks_dict:
+        return cellstacksdicts_dict
