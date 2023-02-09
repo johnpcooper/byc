@@ -345,14 +345,14 @@ def generate_mdf(exptname, compartmentname, **kwargs):
 
     Return the generated master_index_df (mdf)
     """
-    channels = ['bf', 'yfp', 'rfp']
+    channels = kwargs.get('channels', ['bf', 'yfp', 'rfp'])
     compdir = files.get_byc_compartmentdir(exptname, compartmentname)
     compdir = os.path.abspath(compdir)
     cell_indices = get_cell_indices_in_compartment(compdir)
     mdf = pd.DataFrame({
         'cell_index': cell_indices
     })
-
+    mdf.loc[:, 'channels_collected'] = ' '.join(channels)
     mdf.loc[:, 'compartment_dir'] = compdir
     mdf.loc[:, 'compartment_reldir'] = get_relpath(compdir)
     mdf.loc[:, 'exptname'] = exptname
@@ -361,6 +361,7 @@ def generate_mdf(exptname, compartmentname, **kwargs):
     mdf.set_index('cell_index', inplace=True)
     annotate_bud_and_crop_paths_in_mdf(mdf)
     annotate_bud_and_crop_df_info_in_mdf(mdf)
+    print(f'Adding paths for channels {channels}')
     files.add_cell_channel_crop_stack_paths(mdf, channels=channels)
     files.add_cell_channel_xy_source_stack_paths(mdf, channels=channels)
 

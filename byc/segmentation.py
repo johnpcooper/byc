@@ -662,6 +662,8 @@ def get_cell_crop_stack(cell_roi_df,
     exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
     compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
     writepath = os.path.join(compartment_dir, filename)
+    # Annotate the writepath for this cell's crop stack path
+    cell_roi_df.loc[:, f'{channel_name}_crop_stack_path'] = writepath
     # Make a directory in which to save this next gen-generated cell
     # crop stack
     stack_path = writepath
@@ -721,7 +723,8 @@ def get_cell_stacks(crop_roi_dfs,
                   'y_buffer': y_buffer,
                   'save_cell_stacks': save_cell_stacks,
                   'channel_name': channel_name}
-
+        # get_cell_crop_stack() will add {channel_name}_crop_stack_path
+        # to the each crop_roi_df ("cellroidf") in this loop
         cell_stack = get_cell_crop_stack(*args, **kwargs)
         cell_stacks_dict[cell_index] = cell_stack
         cell_stacks.append(cell_stack)
@@ -1459,9 +1462,9 @@ def segment_stack_with_fluor(stack, **kwargs):
             ]
     )
     # area_max_cutoff = kwargs.get('area_max_cutoff', 250)
-    width_max_cutoff = kwargs.get('width_max_cutoff', 24)
-    cell_box_mask_width = kwargs.get('cell_box_mask_width', 9)
-    cell_box_mask_height = kwargs.get('cell_box_mask_height', 9)
+    width_max_cutoff = kwargs.get('width_max_cutoff', 16)
+    cell_box_mask_width = kwargs.get('cell_box_mask_width', 10)
+    cell_box_mask_height = kwargs.get('cell_box_mask_height', 10)
     maskpath_suffix = kwargs.get('maskpath_suffix', '')
     offset = kwargs.get('offset', 3)
     save_segmented_mask = kwargs.get('save_segmented_mask', True)

@@ -80,8 +80,17 @@ if __name__=="__main__":
 
     mdf = sa.create_and_annotate_mdf(*args, **kwargs)
     mdf.loc[:, 'channels_collected'] = ' '.join(channels)
-    mdf = mdf[mdf.cell_index.isin(excluded_cell_indices)==False]
-    print(f'Analyzing cells\n{mdf.cell_index.unique()}')
+    mdf_trimmed = mdf[mdf.cell_index.isin(excluded_cell_indices)==False]
+    if mdf_trimmed.empty:
+        print(f'No more cells to analyze')
+        analyze_anyway = input('All cells have been quantified, continue with re-segmetation?')
+        if analyze_anyway == 'no':
+            exit
+        elif analyze_anyway == 'yes':
+            print(f'Re-segmenting all {len(mdf)} cells')
+    else:
+        print(f'Analyzing cells\n{mdf.cell_index.unique()}')
+        mdf = mdf_trimmed
     ds = sa.bycDataSet(mdf=mdf)
     # Now need to roll the stuff below into a single function
     # that reads in crop_roi_dfs and annotates fluorescence
@@ -89,6 +98,8 @@ if __name__=="__main__":
     crop_roi_dfs = segmentation.make_cell_roi_dfs(mdf, bycdataset=ds)
     cellstacksdicts_dict = {}
     for channel in channels:
+        # segmentation.get_cell_stacks should add crop stack path for
+        # each channel as f'{channel}_crop_stack_path' to the crop_roi_df
         cellstacks, cellstacksdict = segmentation.get_cell_stacks(crop_roi_dfs, channel_name=channel)
         cellstacksdicts_dict[channel] = cellstacksdict
     bfcellstacksdict = cellstacksdicts_dict['bf']
@@ -101,6 +112,7 @@ if __name__=="__main__":
     peak_idx_to_use=0
     allframesdfs = []
     for cell_index in crop_rois_df.cell_index.unique():
+        bf_crop_stack_path = crop_rois_df[crop_rois_df.cell_index==cell_index]['bf_crop_stack_path'].iloc[0]
         args = [cell_index,
                 crop_rois_df,
                 bfcellstacksdict]
@@ -113,6 +125,7 @@ if __name__=="__main__":
         allframesdf = segmentation.cell_stack_I_by_distance_and_theta(*args, **kwargs)
         # Filter outliers from within theta groups
         allframesdf = segmentation.filter_outlier_peaks(allframesdf)
+        allframesdf.loc[:, 'bf_crop_stack_path'] = bf_crop_stack_path
         if plot_segmentation_results:
             try:
                 plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict)
