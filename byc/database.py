@@ -237,7 +237,7 @@ def get_byc_fits_df(**kwargs):
     just the rate constants from fit.   
     """
     compartment_name_var = 'compartment_name'
-    return_traces_df = kwargs.get('return_all_fits_df', False)
+    return_traces_df = kwargs.get('return_traces_df', False)
 
     fits_table_paths = files.get_fits_table_paths()
     fits_tables = [pd.read_csv(p) for p in fits_table_paths]
