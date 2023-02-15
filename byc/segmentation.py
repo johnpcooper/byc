@@ -544,6 +544,43 @@ def make_cell_roi_dfs(mdf, use_bycdataset=False, bycdataset=None):
 
     return crop_roi_dfs
 
+def check_buffers(cellroidf, source_stack, x_buffer, y_buffer):
+    """
+    Make sure that the <x_buffer> and <y_buffer> values will not
+    create crop boundaries that go beyond the edge of the <source_stack>
+
+    If they do, return x_buffer, y_buffer such that they max out at the
+    actual edge of the <source_stack>
+    """
+    x_lowers = cellroidf.x_center - x_buffer
+    x_uppers = cellroidf.x_center + x_buffer
+    y_lowers = cellroidf.y_center - y_buffer
+    y_uppers = cellroidf.y_center + y_buffer
+
+    # Check if any crop boundaries will go outside of the source stack
+    # in the y and then x direction. If so, adjust buffer to go to the edge of
+    # the source stack
+    y_dists_from_upper = source_stack.shape[1] - y_uppers
+    if y_dists_from_upper.min() < 0:
+        print(f'Found crop boundary larger than source stack in y dimension')
+        y_buffer = y_buffer + y_dists_from_upper.min()
+        print(f'Reset y buffer size to {y_buffer} pixels')
+    elif y_lowers.min() < 0:
+        print(f'Found crop boundary smaller than source stack in y dimension')
+        y_buffer = y_buffer + y_lowers.min()
+        print(f'Reset y buffer to {y_buffer} pixels')
+
+    x_dists_from_upper = source_stack.shape[2] - x_uppers
+    if x_dists_from_upper.min() < 0:
+        print(f'Found crop boundary larger than source stack in x dimension')
+        x_buffer = x_buffer + x_dists_from_upper.min()
+        print(f'Reset x buffer size to {x_buffer} pixels')
+    elif x_lowers.min() < 0:
+        print(f'Found crop boundary smaller than source stack in x dimension')
+        x_buffer = x_buffer + x_lowers.min()
+        print(f'Reset x buffer size to {x_buffer} pixels')
+
+    return int(x_buffer), int(y_buffer)
 
 def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
     """
@@ -566,6 +603,9 @@ def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
     if source_stack is None:
         source_stack_path = cellroidf.bf_stack_path.iloc[0]
         source_stack = skimage.io.imread(source_stack_path)
+    # Adjust the x and y buffer sizes so the crop stays within
+    # the bounds of the source stack
+    x_buffer, y_buffer = check_buffers(cellroidf, source_stack, x_buffer, y_buffer)
     cropped_frames = []
     for frame_idx in cellroidf.frame:
         frame = source_stack[int(frame_idx)]
