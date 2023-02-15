@@ -935,7 +935,7 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
 
     Returns nothing
     """
-    outlinedf = segmentation.save_outline_rois_df(allframesdf)
+    outlinedf = segmentation.save_outline_rois_df(allframesdf, write_df=False, return_outline_df=True)
     frames_table = allframesdf.set_index('frame_rel')
     cell_index = frames_table.cell_index.iloc[0]
     cellname = f'{frames_table.compartment_name.iloc[0]}_cell{str(cell_index).zfill(3)}_roi_{channel}_stack.tif'

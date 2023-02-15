@@ -229,7 +229,7 @@ def get_byc_fits_df(**kwargs):
     found in in all compartment directories of all byc experiments
     in constants.byc_data_dir
     
-    If kwarg 'return_all_fits_df' is True, return 
+    If kwarg 'return_traces_df' is True, return 
 
     (fits_df, allfitsdf)
 
