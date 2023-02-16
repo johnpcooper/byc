@@ -1915,6 +1915,7 @@ def refine_and_annotate_celldfs(
     """
 
     for cell_index, celldf in enumerate(celldfs):
+        celldf.index = range(len(celldf))
         exptname = celldf.loc[0, 'exptname']
         compdir = os.path.join(constants.byc_data_dir, celldf.loc[0, 'compartment_reldir'])
         celldf.loc[:, 'frame'] = celldf.frame_number
