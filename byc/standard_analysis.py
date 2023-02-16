@@ -131,7 +131,7 @@ class bycDataSet(object):
                     # df until I'm down finding new channel .csvs
                     # because I don't want the time columns to get
                     # labelled with '_<channel_name>'
-                    hours = ((df.Slice-1)*collection_interval)/60
+                    hours = ((df.frame)*collection_interval)/60
                     crop_roi_set_path = os.path.join(constants.byc_data_dir, cellrow.crop_roi_set_relpath)
                     if type(crop_roi_set_path) != str:
                         crop_roi_set_path = cellrow.crop_roi_set_path
@@ -139,7 +139,7 @@ class bycDataSet(object):
                     rois = read_roi_zip(crop_roi_set_path)
                     first_position = rois[list(rois.keys())[0]]['position']
                     first_position_ind = first_position - 1
-                    abs_hours = ((df.Slice-1+first_position_ind)*collection_interval)/60
+                    abs_hours = ((df.frame+first_position_ind)*collection_interval)/60
                     # Add hours to death column if end event for crop
                     # ROIs was 'death'. Otherwise set column to np.nan
                     last_position = rois[list(rois.keys())[-1]]['position']
@@ -472,9 +472,9 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp', **kwargs):
     tracedf.loc[:, norm_col_name] = y_norm
     if 'frame_rel' not in list(tracedf.columns):
         try:
-            tracedf.loc[:, 'frame_rel'] = tracedf.Slice_bf - 1
+            tracedf.loc[:, 'frame_rel'] = tracedf.frame
         except:
-            tracedf.loc[:, 'frame_rel'] = tracedf.Slice - 1
+            tracedf.loc[:, 'frame_rel'] = tracedf.frame
     tracedf.loc[:, 'hours'] = (tracedf.frame_rel*delta_t)/60
     tracedf.loc[:, 'hours_rel'] = tracedf.hours - (chase_frame*delta_t)/60
     
