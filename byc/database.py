@@ -565,12 +565,15 @@ def annotate_daughter_shapes(bud_rois_df):
     """
     Find the text "round" or "long" in the name column of
     the <bud_rois_df> and annotate the data found in place
+
+    The <bud_rois_df> final frame or position row should
+    be the death frame
     """    
     # Create a column with the shape of each bud annotated
     pattern = "(round|long)"
     matches = bud_rois_df['name'].apply(lambda x: re.search(pattern, x))
     bud_rois_df.loc[0:, 'shape_matches'] = matches
-    # This function will make we add nan for bud roi frames that
+    # This function will add nan for bud roi frames that
     # for whatever reason did not have a shape annotated
     def find_group(x):
         if x is None:
@@ -584,4 +587,8 @@ def annotate_daughter_shapes(bud_rois_df):
     # in the shapes array is meaningless because it would describe a bud
     # that we never saw appear. The last ROI in the bud roi set annotates
     # the last frame before the cell dies. So that shape annotation stays
-    bud_rois_df.loc[bud_rois_df.index[0:-1], 'bud_shape'] = bud_rois_df.shape_matches.apply(lambda x: find_group(x))[1:]
+    bud_rois_df.loc[:, 'bud_shape'] = bud_rois_df.shape_matches.apply(lambda x: find_group(x))
+    # Offset the bud shapes because the shape annotated at the frame at which
+    # bud i appears is the shape of bud i-1
+    bud_rois_df.loc[0:bud_rois_df.index.max()-1, 'bud_shape'] = bud_rois_df.bud_shape[1:].values
+    bud_rois_df.loc[bud_rois_df.index.max(), 'bud_shape'] = np.nan

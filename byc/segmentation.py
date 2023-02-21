@@ -1202,10 +1202,13 @@ def get_mask_stack_from_outline_vertices(
     channel_masks = []
 
     for frame_index in outline_df.frame.unique():
-        frame_image = channel_crop_stack[int(frame_index)]
-        frame_roi_df = outline_df[outline_df.frame==frame_index]
-        frame_mask = get_mask(frame_image, frame_roi_df)
-        channel_masks.append(frame_mask)
+        if int(frame_index) < len(channel_crop_stack):
+            frame_image = channel_crop_stack[int(frame_index)]
+            frame_roi_df = outline_df[outline_df.frame==frame_index]
+            frame_mask = get_mask(frame_image, frame_roi_df)
+            channel_masks.append(frame_mask)
+        else:
+            print(f'More frames in vertices df than channel stack at\n{crop_stack_path}')
     if mask_path_suffix:
         mask_save_path = crop_stack_path.replace('.tif', f'_mask_{mask_path_suffix}.tif')
     else:
@@ -1730,7 +1733,7 @@ def segment_stack_with_fluor(stack, **kwargs):
         maskstacksavepath = filepath.replace('.tif', '_mask.tif')
         if maskpath_suffix != '':
             maskstacksavepath = maskstacksavepath.replace('.tif', f'_{maskpath_suffix}.tif')
-        masklist = [mask*-1 for mask in objectmasks]
+        masklist = [mask*1 for mask in objectmasks]
         maskstack = io.concatenate_images(masklist)
         io.imsave(maskstacksavepath, maskstack, check_contrast=False)
         print(f'Saved segmented mask at\n{maskstacksavepath}')
@@ -1909,7 +1912,8 @@ def refine_and_annotate_celldfs(
     """
     On each celldf in <celldfs>, annotate cell cycle information,
     throw out measurements made using bad ROIs, and normalize
-    the fluorescence measurements according to <yvars>
+    the fluorescence measurements according to <yvars>. <celldfs>
+    is a list of dataframes with fluorescence over time measurements
 
     Return nothing as <celldfs> are modified inplace
     """
