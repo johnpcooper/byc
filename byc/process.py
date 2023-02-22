@@ -59,7 +59,7 @@ class bycImageSet(object):
         fov_dir_paths_dict = dict(zip(fov_indices, fov_dir_paths))
         return fov_dir_paths_dict
     
-    def fov_channels_dict(self, fov_index, fov_dir_paths_dict, crop_frames=True, start_pixel_x=None, fraction=0.):
+    def fov_channels_dict(self, fov_index, fov_dir_paths_dict, crop_frames=True, start_pixel_x=None, fraction=0.5):
         """
         Return fov_channels_dict: keys are channel
         names found in display_and_comments and elements
