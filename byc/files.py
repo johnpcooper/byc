@@ -98,11 +98,12 @@ def add_cell_channel_crop_stack_paths(df, channels=['bf', 'yfp']):
     types = df.expt_type
     xys = df.xy.astype(int).astype(str).str.zfill(2)
     cell_idxs = df.cell_index.astype(int).astype(str).str.zfill(3)
+    compartment_reldir = df.compartment_reldir.iloc[0]
 
     for channel in channels:
         filenames = dates + '_' + types + '_xy' + xys + '_cell' + cell_idxs + f'_{channel}_stack.tif'
-        filerelpaths = df.compartment_reldir.str.cat(filenames, sep='\\')
-        fileabspaths = constants.byc_data_dir + filerelpaths
+        filerelpaths = [os.path.join(compartment_reldir, fn) for fn in filenames]
+        fileabspaths = [os.path.join(constants.byc_data_dir, filerelpath) for filerelpath in filerelpaths]
         fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
 
         df.loc[:, f'{channel}_crop_stack_path'] = fileabspaths
@@ -112,11 +113,12 @@ def add_cell_channel_xy_source_stack_paths(df, channels=['bf', 'yfp']):
     dates = df.date.astype(int).astype(str)
     types = df.expt_type
     xys = df.xy.astype(int).astype(str).str.zfill(2)
+    compartment_reldir = df.compartment_reldir.iloc[0]
 
     for channel in channels:
         filenames = dates + '_' + types + '_xy' + xys + f'_{channel}_stack.tif'
         filerelpaths = df.compartment_reldir.str.cat(filenames, sep='\\')
-        fileabspaths = constants.byc_data_dir + filerelpaths
+        fileabspaths = [os.path.join(constants.byc_data_dir, filerelpath) for filerelpath in filerelpaths]
         fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
 
         df.loc[:, f'{channel}_stack_path'] = fileabspaths
