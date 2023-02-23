@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from byc import constants, utilities, files, trace_tools
+from byc import constants, utilities, files, plasmids, trace_tools
 from byc import standard_analysis as sa
 from byc.constants import patterns
 
@@ -281,11 +281,11 @@ def label_from_strain_database(features_df):
     if type(strain_name) == str:
         row = strains_df.set_index('Name').loc[strain_name, :]
         plasmid = row.Plasmid
-        # substrate = plasmids.substrate_name_from_plasmid_name(plasmid)
+        substrate = plasmids.substrate_name_from_plasmid_name(plasmid)
         background = row.Background
 
         features_df.loc[:, 'plasmid'] = plasmid
-        # features_df.loc[:, 'substrate'] = substrate
+        features_df.loc[:, 'substrate'] = substrate
         features_df.loc[:, 'background'] = background
     else:
         print(f'Did not find suitable strain name: {strain_name}')
