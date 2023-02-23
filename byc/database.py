@@ -285,7 +285,7 @@ def label_from_strain_database(features_df):
         background = row.Background
 
         features_df.loc[:, 'plasmid'] = plasmid
-        features_df.loc[:, 'substrate'] = substrate
+        # features_df.loc[:, 'substrate'] = substrate
         features_df.loc[:, 'background'] = background
     else:
         print(f'Did not find suitable strain name: {strain_name}')
