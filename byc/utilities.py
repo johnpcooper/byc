@@ -358,6 +358,7 @@ def generate_mdf(exptname, compartmentname, **kwargs):
     mdf.loc[:, 'exptname'] = exptname
     mdf.loc[:, 'date'] = mdf.exptname.str[0:8]
     mdf.loc[:, 'compartment_name'] = mdf.compartment_dir.apply(lambda x: os.path.basename(x))
+    mdf.loc[:, 'exptname'] = exptname
     mdf.set_index('cell_index', inplace=True)
     annotate_bud_and_crop_paths_in_mdf(mdf)
     annotate_bud_and_crop_df_info_in_mdf(mdf)
@@ -392,3 +393,19 @@ def check_bud_and_crop_roi_dfs(compartmentdir):
 
     print(f'Missing crop df .csv files for cells {missed_crop_dfs}')
     print(f'Missing bud df .csv files for cells {missed_bud_dfs}')
+
+def check_for_crop_stack_exist(mdf):
+    """
+    Return False if any of the crop_stack_paths in the <mdf>
+    do not exist
+    """
+    all_channel_crop_stack_exist_bools = []
+    for channel in mdf.channels_collected.iloc[0].split(' '):
+        pathcolname = f'{channel}_crop_stack_path'
+        exist_bools = [os.path.exists(path) for path in mdf[pathcolname]]
+        all_channel_crop_stack_exist_bools = all_channel_crop_stack_exist_bools + exist_bools
+
+    if False in all_channel_crop_stack_exist_bools:
+        return False
+    else:
+        return True

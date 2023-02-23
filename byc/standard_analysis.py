@@ -233,7 +233,12 @@ class bycDataSet(object):
         mdf.loc[:, col_name] = np.nan
         compartmentname = mdf.compartment_name.iloc[0]
         date = compartmentname[0:8]
-        exptname = f'{date}_byc'
+        if 'byc' in compartmentname:
+            exptname = f'{date}_byc'
+        elif 'fylm' in compartmentname:
+            exptname = f'{date}_fylm'
+        else:
+            print(f'Compartment name needs to contain date followed by expt typ (fylm or byc)')
         kwargs = {'return_exptdir': True}
         exptdir, compdir = files.get_byc_compartmentdir(exptname, compartmentname, **kwargs)
 

@@ -20,6 +20,8 @@ from skimage.draw import polygon_perimeter
 from scipy.spatial import ConvexHull
 from scipy.signal import medfilt, find_peaks
 
+from pykdtree.kdtree import KDTree
+
 from matplotlib.path import Path
 
 from read_roi import read_roi_file, read_roi_zip
@@ -699,7 +701,12 @@ def get_cell_crop_stack(cell_roi_df,
     filename = f'{date}_byc_xy{xy}_cell{cell_index_str}_{channel_name}_stack.tif'
     cell_index = cell_roi_df.cell_index.iloc[0]
     compartment_name = cell_roi_df.compartment_name.iloc[0]
-    exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
+    if 'byc' in compartment_name:
+        exptname = str(cell_roi_df.date.iloc[0]) + '_byc'
+    elif 'fylm' in compartment_name:
+        exptname = str(cell_roi_df.date.iloc[0]) + '_fylm'
+    else:
+        print('Compartment name needs to consit of <date>_<expttype> (byc/fylm)')
     compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
     writepath = os.path.join(compartment_dir, filename)
     # Annotate the writepath for this cell's crop stack path
@@ -1563,6 +1570,8 @@ def annotate_label_df(labeldf, center_x):
     labeldf.loc[:, 'centroid_x'] = [np.int32(val) for val in np.round(labeldf['centroid-1'], decimals=0)]
     labeldf.loc[:, 'centroid_y'] = [np.int32(val) for val in np.round(labeldf['centroid-0'], decimals=0)]
     labeldf.loc[:, 'x_distance_from_center'] = np.abs(labeldf.centroid_x - center_x)
+    roundness = np.power(labeldf.perimeter, 2)/(4*np.pi*labeldf.area)
+    labeldf.loc[:, 'roundness'] = roundness
     # Select the object with its center of gravity closest to the center
     # as our blob of interest
     labeldf.sort_values(by='x_distance_from_center', inplace=True)
@@ -1631,7 +1640,7 @@ def watershed_mask(image):
 
 def segment_stack_with_fluor(stack, **kwargs):
     """
-    <stack> is a 3d numpy grayscale array from fluorescence imaging
+    <stack> is a 3d numpy array from fluorescence imaging
 
     Return dfs, objectmasks
 
@@ -1641,7 +1650,7 @@ def segment_stack_with_fluor(stack, **kwargs):
     stack (or other) to measure
     """ 
     properties = kwargs.get('properties',
-        [
+            [
             'area',
             'bbox',
             'convex_area',
@@ -1649,17 +1658,23 @@ def segment_stack_with_fluor(stack, **kwargs):
             'major_axis_length',
             'minor_axis_length',
             'eccentricity',
-            'centroid'
+            'centroid',
+            'feret_diameter_max',
+            'perimeter'
             ]
     )
     # area_max_cutoff = kwargs.get('area_max_cutoff', 250)
-    width_max_cutoff = kwargs.get('width_max_cutoff', 16)
+    width_max_cutoff = kwargs.get('width_max_cutoff', 20)
     cell_box_mask_width = kwargs.get('cell_box_mask_width', 10)
     cell_box_mask_height = kwargs.get('cell_box_mask_height', 10)
+    roundness_min = kwargs.get('roundness_min', 0.9)
+    area_min = kwargs.get('area_min', 40)
     maskpath_suffix = kwargs.get('maskpath_suffix', '')
     offset = kwargs.get('offset', 3)
     save_segmented_mask = kwargs.get('save_segmented_mask', True)
     save_roi_outline_stack = kwargs.get('save_roi_outline_stack', True)
+    save_otsu_mask = kwargs.get('save_otsu_mask', True)
+    save_watershed_mask = kwargs.get('save_watershed_mask', True)
     filepath = kwargs.get('stackpath', os.path.join(os.getcwd(), 'unknown_stack.tif'))
     # Define a restricted ROI within which we'll calculate otsu threshold. We'll then 
     # for blobs with center of mass within this box + a little width
@@ -1702,27 +1717,51 @@ def segment_stack_with_fluor(stack, **kwargs):
     # Define properties of individual objects and choose the one
     dfs = []
     objectmasks = []
+    watershedmasks = []
     for frame_number in range(n_frames):
         print(f'Segmenting frame {frame_number} of {n_frames}', end='\r')
         df = pd.DataFrame(regionprops_table(object_labels[frame_number], properties=properties))
         annotate_label_df(df, width_center)
-        objectdf = df[df.dist_from_center_rank==0]
+        # Drop any objects created by watershed that don't fit our cell shape
+        # parameters before choosing the one closest to x_center
+        filtered_df = df[df.roundness>=roundness_min]
+        filtered_df = df[df.area>=area_min]
+        if len(filtered_df) > 0:
+            min_dist_from_center = filtered_df.dist_from_center_rank.min()
+            objectdf = filtered_df[filtered_df.dist_from_center_rank == min_dist_from_center]
+        else: 
+            # if we didn't get any objects that fit desired shape just use the original
+            # closest to center object
+            objectdf = df[df.dist_from_center_rank==0]
         objectdf.loc[:, 'frame_number'] = frame_number
         object_index = objectdf.index.unique()[0]
         object_value_in_mask = object_index + 1
+        # object_labels is the list made above of 2d arrays at each
+        # frame with pixels set to 1 representing object 1, pixels
+        # set to 2 representing object 2, etc.
         objectmask = object_labels[frame_number] == object_value_in_mask
-        # If the found object mask is larger than expected, watershed it and 
-        # pick the closest new object to center
+        watershed_labels = watershed_mask(objectmask)
+        watershedmasks.append(watershed_labels)
+        # If the found object mask is larger than expected, evaluate
+        # the watershed labels and choose one of the smaller objects
         if objectdf.major_axis_length.values[0] >= width_max_cutoff:
-            print(f'Found large ROI, running watershed for frame {frame_number}')
-            watershed_labels = watershed_mask(objectmask)
+            print(f'Found ROI with major axis width >= {width_max_cutoff} px, running watershed for frame {frame_number}')
             watershedlabeldf = pd.DataFrame(regionprops_table(watershed_labels, properties=properties))
             annotate_label_df(watershedlabeldf, width_center)
-            objectdf = watershedlabeldf[watershedlabeldf.dist_from_center_rank==0]
-            objectdf.loc[:, 'frame_number'] = frame_number
-            object_index = objectdf.index.unique()[0]
-            object_value_in_mask = object_index + 1
-            objectmask = watershed_labels == object_value_in_mask
+            # Drop any objects created by watershed that don't fit our cell shape
+            # parameters before choosing the one closest to x_center
+            watershedlabeldf = watershedlabeldf[watershedlabeldf.roundness>=roundness_min]
+            watershedlabeldf = watershedlabeldf[watershedlabeldf.area>=area_min]
+            # If there are no objects left after filtering out bad shaped ROIs above,
+            # then the objectmask and objectdf will remain as what we got from the first
+            # run at finding object closest to center after otsu threshold
+            if len(watershedlabeldf) > 0:
+                min_dist_from_center = watershedlabeldf.dist_from_center_rank.min()
+                objectdf = watershedlabeldf[watershedlabeldf.dist_from_center_rank==min_dist_from_center]
+                objectdf.loc[:, 'frame_number'] = frame_number
+                object_index = objectdf.index.unique()[0]
+                object_value_in_mask = object_index + 1
+                objectmask = watershed_labels == object_value_in_mask
 
         # Add final dataframe and mask for the object of interest to 
         # the lists that will be returned
@@ -1746,6 +1785,16 @@ def segment_stack_with_fluor(stack, **kwargs):
         draw_mask_outlines(stack, objectmasks)
         io.imsave(outlinesavepath, stack, check_contrast=False)
         print(f'Saved segmented outlines at\n{outlinesavepath}')
+    if save_otsu_mask:
+        otsusavepath = filepath.replace('.tif', '_otsu_mask.tif')
+        otsulist = [mask*1 for mask in otsu_masks]
+        otsustack = io.concatenate_images(otsulist)
+        io.imsave(otsusavepath, otsustack, check_contrast=False)
+    if save_watershed_mask:
+        watershedsavepath = filepath.replace('.tif', '_otsu_watershed_mask.tif')
+        watershedlist = [mask*1 for mask in watershedmasks]
+        watershedstack = io.concatenate_images(watershedlist)
+        io.imsave(watershedsavepath, watershedstack, check_contrast=False)
     
     return dfs, objectmasks, maskstacksavepath
 
@@ -1798,7 +1847,7 @@ def measure_stack_with_mask(
     for colname in keys:
         if set_outliers_to_nan:
             print(f'Tossing outliers')
-            roi_size_minimum = celltracedf[var_to_exclude_rois].median() - np.std(celltracedf[var_to_exclude_rois])
+            roi_size_minimum = celltracedf[var_to_exclude_rois].median() - 2*np.std(celltracedf[var_to_exclude_rois])
             celltracedf.loc[celltracedf[var_to_exclude_rois]<=roi_size_minimum, colname] = np.nan
             n_bad_rois = len(celltracedf.loc[celltracedf[var_to_exclude_rois]<=roi_size_minimum, colname])
             total_rois = len(celltracedf)
@@ -2023,3 +2072,145 @@ def write_cell_crop_stacks(mdf, return_cellstacks_dict=False):
         cellstacksdicts_dict[channel] = cellstacksdict
     if return_cellstacks_dict:
         return cellstacksdicts_dict
+
+
+def interpolate_centroid_x_y(cell_props_df, good_frames):
+
+    # Interpolate the x and y coordinates between good frame ROIs
+    good_frames_df = cell_props_df[cell_props_df.frame.isin(good_frames)]
+    centroid_x_coords = good_frames_df['centroid-0'].values
+    centroid_y_coords = good_frames_df['centroid-1'].values
+    frames_filled = range(len(cell_props_df))
+    centroid_x_interp = np.interp(frames_filled, good_frames, centroid_x_coords)
+    centroid_y_interp = np.interp(frames_filled, good_frames, centroid_y_coords)
+    cell_props_df.loc[:, 'centroid_x_interp'] = centroid_x_interp
+    cell_props_df.loc[:, 'centroid_y_interp'] = centroid_y_interp
+
+def translate_binary_mask(mask, x_delta, y_delta):
+    """
+    Return a 2d np.array of where all points in <mask> with
+    value == 1 have been shifted by <x_delta>, <y_delta>
+    """
+    # translate the mask
+    X, Y = x_y_coord_arrays_from_image(mask)
+    X_in_mask = X[np.bool8(mask)]
+    Y_in_mask = Y[np.bool8(mask)]
+
+    X_in_mask_translated = X_in_mask + x_delta
+    y_in_mask_translated = Y_in_mask + y_delta
+
+    new_mask = np.full_like(mask, 0)
+    for idx, xcoord in enumerate(X_in_mask_translated):
+        ycoord = y_in_mask_translated[idx]
+        if xcoord in list(np.unique(X)) and ycoord in list(np.unique(Y)):
+            new_mask[int(ycoord), int(xcoord)] = 1
+
+    return new_mask
+
+def get_mask_stack_properties_df(mask_stack, mask_stack_path=None, **kwargs):
+    
+    properties_to_get = [
+                'area',
+                'bbox',
+                'convex_area',
+                'bbox_area',
+                'major_axis_length',
+                'minor_axis_length',
+                'eccentricity',
+                'centroid',
+                'feret_diameter_max',
+                'perimeter'
+                ]
+
+    properties_to_get = kwargs.get('properties_to_get', properties_to_get)
+
+    props_dfs = []
+    for frame_index in range(len(mask_stack)):
+
+        mask = mask_stack[frame_index]
+
+        label_mask = label(mask)
+        table = regionprops_table(label_mask, properties=properties_to_get)
+        props_df = pd.DataFrame(table)
+        props_df.loc[:, 'frame'] = frame_index
+        assert len(props_df) == 1, f'Found {len(props_df)} objects in mask that should only contain 1'
+        props_dfs.append(props_df)
+
+    cell_props_df = pd.concat(props_dfs)
+    roundness = np.power(cell_props_df.perimeter, 2)/(4*np.pi*cell_props_df.area)
+    cell_props_df.loc[:, 'roundness'] = roundness
+    cell_props_df.index = cell_props_df.frame
+    cell_props_df.loc[:, 'mask_path'] = mask_stack_path
+
+    return cell_props_df
+
+def interopolate_mask_centroids(mask_stack_properties_df, area_threshold=15, roundness_threshold=0.8):
+    """
+    Add centroid_x_interp and centroid_y_interp columns to <mask_stack_properties_df>
+
+    Return good_frames, bad_frames, neighbor_frames
+
+    where good_frames are frames with ROIs above area_threshold and roundness_threshold,
+    bad_frames are all the other frames, and neighbor frames is an array of the same shape
+    as bad_frames with the closest frame in good_frames to each frame in bad_frames
+    """
+    bool1 = mask_stack_properties_df.area >= area_threshold
+    bool2 = mask_stack_properties_df.roundness >= roundness_threshold
+    mask_stack_properties_df.loc[:, 'meets_threshold'] = bool1 & bool2
+
+    good_frames = mask_stack_properties_df.loc[mask_stack_properties_df.meets_threshold, 'frame'].values
+    bad_frames = mask_stack_properties_df.loc[~mask_stack_properties_df.meets_threshold, 'frame'].values
+
+    # For each frame in bad_frames, find the closest frame in the array of
+    # good frames. The closest frame will be used as the shape to fill
+    # in the ROI at the bad frame
+    tree = KDTree(good_frames)
+    nearest_dists, neighbor_indices = tree.query(bad_frames)
+    # neighbor_indices are the indices of the nearest values
+    # within the good_frames array
+    neighbor_frames = [good_frames[idx] for idx in neighbor_indices]
+    # Interpolate x and y coordinates of the good frame ROIs' centroids
+    interpolate_centroid_x_y(mask_stack_properties_df, good_frames)
+
+    return good_frames, bad_frames, neighbor_frames
+
+def interpolate_masks_by_centroid(
+    mask_stack_properties_df,
+    mask_stack,
+    mask_path,
+    bad_frames,
+    neighbor_frames,
+    return_mask=True
+    ):
+
+    interpolated_masks = {}
+    # Create dictionary of masks that we'll modify with the 
+    # interpolated ROIs
+    for frame in mask_stack_properties_df.frame:
+        interpolated_masks[frame] = mask_stack[frame]
+    for idx, frame_index in enumerate(bad_frames):
+        new_centroid_x = np.round(mask_stack_properties_df.centroid_x_interp[frame_index])
+        new_centroid_y = np.round(mask_stack_properties_df.centroid_y_interp[frame_index])
+        # idx is the index within the list of bad_frames, not the actual
+        # frame number of the bad frame
+        nearest_good_frame = neighbor_frames[idx]
+        nearest_good_mask = mask_stack[nearest_good_frame]
+        x_delta = np.round(mask_stack_properties_df['centroid-0'][nearest_good_frame]) - new_centroid_x
+        y_delta = np.round(mask_stack_properties_df['centroid-1'][nearest_good_frame]) - new_centroid_y
+
+        new_mask = translate_binary_mask(
+            nearest_good_mask,
+            x_delta,
+            y_delta
+        )
+
+        interpolated_masks[frame_index] = new_mask
+
+    interpolated_masks_list = [np.bool8(interpolated_masks[key])*-1 for key in interpolated_masks.keys()]
+    interpolated_masks_stack = io.concatenate_images(interpolated_masks_list)
+    interpolated_masks_path = mask_path.replace('.tif', '_interpolated.tif')
+    io.imsave(interpolated_masks_path, interpolated_masks_stack, check_contrast=False)
+    print(f'Saved interpolated mask stack at\n{interpolated_masks_path}')
+
+    if return_mask:
+        return interpolated_masks_stack

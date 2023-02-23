@@ -167,8 +167,8 @@ def format_ticks(ax, **kwargs):
     except:
         xmajorspace = np.nan
     ymajorspace = np.diff(ax.get_yticks())[0]
-    xminorspace = np.abs(xmajorspace/5)
-    yminorspace = np.abs(ymajorspace/5)
+    xminorspace = np.abs(xmajorspace/2)
+    yminorspace = np.abs(ymajorspace/2)
 
     yminorspace = kwargs.get('yminorspace', yminorspace)
     xminorspace = kwargs.get('xminorspace', xminorspace)
