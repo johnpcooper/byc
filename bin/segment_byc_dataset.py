@@ -126,6 +126,10 @@ if __name__=="__main__":
         # Filter outliers from within theta groups
         allframesdf = segmentation.filter_outlier_peaks(allframesdf)
         allframesdf.loc[:, 'bf_crop_stack_path'] = bf_crop_stack_path
+        # Write a .csv containing x and y coordinates for the vertices of the cell outline
+        # relative to the center of the crop stack. These will be used to make mask tifs
+        # and cell trace dataframes with segmentation.cell_tracedf_from_outline_df
+        segmentation.save_outline_rois_df(allframesdf, write_df=True, return_outline_df=False)
         if plot_segmentation_results:
             try:
                 plotting.save_segmentation_visualization(allframesdf, 'bf', bfcellstacksdict)
@@ -176,7 +180,7 @@ if __name__=="__main__":
                 allframesdf.loc[allframesdf.frame_rel==frame_idx, f'{channel}_int'] = integrated_intensity
                 allframesdf.loc[allframesdf.frame_rel==frame_idx, f'.Cell_area_px_{channel}'] = cell_area_px
         allframesdfs_measured.append(allframesdf)
-        
+
     allmeasureddf = pd.concat(allframesdfs_measured, ignore_index=True)
     # Split combined cell dataframes back into individual ones
     celldfs = [allmeasureddf[allmeasureddf.cell_index==cidx] for cidx in allmeasureddf.cell_index.unique()]
