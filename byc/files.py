@@ -117,7 +117,7 @@ def add_cell_channel_xy_source_stack_paths(df, channels=['bf', 'yfp']):
 
     for channel in channels:
         filenames = dates + '_' + types + '_xy' + xys + f'_{channel}_stack.tif'
-        filerelpaths = df.compartment_reldir.str.cat(filenames, sep='\\')
+        filerelpaths = [os.path.join(compartment_reldir, fn) for fn in filenames]
         fileabspaths = [os.path.join(constants.byc_data_dir, filerelpath) for filerelpath in filerelpaths]
         fileabspaths = [os.path.abspath(path) for path in list(fileabspaths)]
 
