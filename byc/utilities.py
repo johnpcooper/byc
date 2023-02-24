@@ -230,7 +230,8 @@ def annotate_channel_paths_in_mdf(mdf, **kwargs):
     'gfp',
     'yfp',
     'mko',
-    'rfp'
+    'rfp',
+    'e2c'
     ]
     groups = '|'.join(possible_channels)
     channelpattern = f'({groups})'    
