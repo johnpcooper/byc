@@ -1,7 +1,5 @@
 import os
 import sys
-#arbitrary line
-import re
 
 import pandas as pd
 import numpy as np
