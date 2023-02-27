@@ -1,4 +1,5 @@
 import os
+import re
 
 import tifffile
 import skimage.io
@@ -73,6 +74,9 @@ class bycImageSet(object):
         fov_channels_dict = {}
         for channel in self.channel_names:
             channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if channel in fn]
+            # Files don't get listed in order on unix based OS so 
+            # we need to sort so that frames get read in in order
+            channel_paths.sort()
             fov_channels_dict[channel] = [skimage.io.imread(path) for path in channel_paths]
         # Crop out data outside the middle half of each frame because
         # there are no cells there and we want as lean a dataset as possible
@@ -175,7 +179,12 @@ def translate_channels(channels_dict, offsets):
 
     return translated_channels
 
-def align_fov(fov_index, byc_image_set, write_output=True, rotate=False, **kwargs):
+def align_fov(
+        fov_index,
+        byc_image_set,
+        write_output=True,
+        rotate=False,
+        **kwargs):
     """
     Pass this function an process.bycImageSet() instance which
     it will use to get data for the fov at fov_index, align
@@ -186,7 +195,8 @@ def align_fov(fov_index, byc_image_set, write_output=True, rotate=False, **kwarg
     If write_output==False, return the translated channels_dict
     """
     save_unaligned = kwargs.get('save_unaligned', False)
-    channels = byc_image_set.fov_channels_dict(fov_index, byc_image_set.fov_dir_paths_dict)
+    channels = byc_image_set.fov_channels_dict(fov_index,
+                                               byc_image_set.fov_dir_paths_dict)
     if rotate:
         # Find a good rotational offset and rotate images in each channel
         # stack by that rotational offset
@@ -205,8 +215,15 @@ def align_fov(fov_index, byc_image_set, write_output=True, rotate=False, **kwarg
     translated_channels = translate_channels(rotated_channels, offsets)
     # Save each translated channel stack
     fov_dir_path = byc_image_set.fov_dir_paths_dict[fov_index]
-    # Should update this to find date using byc.constants.patterns.date
-    expt_date = fov_dir_path.split('/')[-1][0:8]
+    # Extract the experiment date from the filepath
+    date_pattern = constants.patterns.date
+    match = re.search(date_pattern, fov_dir_path)
+    if match:
+        expt_date = match.group()
+    else:
+        print(f'No date found in FOV dir. path:\n{fov_dir_path}')
+        expt_date = '00000000'
+        print(f'Using {expt_date} as date')
     if write_output:
 
         fov_str = str(fov_index).zfill(2)
@@ -242,7 +259,7 @@ def align_byc_expt(**kwargs):
     if input_path != None and os.path.exists(input_path):
         byc_image_set = bycImageSet(input_path)
     else:
-        # Not an input path arg to bycImageSet()
+        # Lack of input path arg to bycImageSet()
         # will prompt the user to select one
         byc_image_set = bycImageSet()
 
@@ -250,5 +267,3 @@ def align_byc_expt(**kwargs):
         print(f'Aligning FOV {fov_index+1} of {len(byc_image_set.fov_dir_paths_dict.keys())}')
         align_fov(fov_index, byc_image_set, write_output=write_output, save_unaligned=save_unaligned)
     print('Finished aligning')
-
-

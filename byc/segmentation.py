@@ -706,7 +706,7 @@ def get_cell_crop_stack(cell_roi_df,
     elif 'fylm' in compartment_name:
         exptname = str(cell_roi_df.date.iloc[0]) + '_fylm'
     else:
-        print('Compartment name needs to consit of <date>_<expttype> (byc/fylm)')
+        print('Compartment name needs to consist of <date>_<expttype> (byc/fylm)')
     compartment_dir = files.get_byc_compartmentdir(exptname, compartment_name)
     writepath = os.path.join(compartment_dir, filename)
     # Annotate the writepath for this cell's crop stack path

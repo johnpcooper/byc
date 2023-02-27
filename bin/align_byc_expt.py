@@ -1,4 +1,3 @@
-
 import sys
 import os
 
@@ -39,7 +38,7 @@ def run(nis_data=False):
             fov_paths = []
 
             for directory in fov_dirs:
-                fov_paths.append(expt_path + '/' + directory)
+                fov_paths.append(os.path.join(expt_path, directory))
                 
             return fov_dirs, fov_paths
 
@@ -72,6 +71,3 @@ if __name__ == "__main__":
         run(nis_data=nis_data)
     else:
         run()
-        
-
-
