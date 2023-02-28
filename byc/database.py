@@ -171,6 +171,8 @@ def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
 
     Return allfitsdf, fits_table
     """
+    fits_table_filename = kwargs.get('fits_table_filename', 'fits_table.csv')
+    fits_and_traces_table_filename = kwargs.get('fits_and_traces_table_filename', 'allfitsdf.csv')
     return_dfs = kwargs.get('return_dfs', True)
     compindex = kwargs.get('compindex', 0)
     # Get rid of cells with 'cell_index' in the <drops> list
@@ -210,8 +212,8 @@ def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
     compartment_name = mdf.compartment_name.unique()[0]
     compartment_dir = files.get_byc_compartmentdir(f'{date}_byc', compartment_name)
     compdir = os.path.join(constants.byc_data_dir, compartment_dir)
-    fits_table_savepath = os.path.join(compdir, 'fits_table.csv')
-    fits_df_savepath = os.path.join(compdir, 'allfitsdf.csv')
+    fits_table_savepath = os.path.join(compdir, fits_table_filename)
+    fits_df_savepath = os.path.join(compdir, fits_and_traces_table_filename)
     fits_table.to_csv(fits_table_savepath, index=False)
     print(f'Saved exponential fits table at {fits_table_savepath}')
     fits_df.to_csv(fits_df_savepath, index=False)
