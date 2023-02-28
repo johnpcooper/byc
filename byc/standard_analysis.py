@@ -465,10 +465,15 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp', **kwargs):
     norm_col_name = kwargs.get('norm_col_name', None)
     delta_t = kwargs.get('delta_t', 10)
     tracedf = cell_trace_df
+    tracedf.sort_values(by='frame', inplace=True)
     chase_frame = int(tracedf.chase_frame.iloc[0])
     tracedf.loc[:, f'{yvar}_bg_sub'] = np.nan
     tracedf.loc[:, f'{yvar}_bg_sub'] = tracedf[yvar] - tracedf[yvar].min()
-    yt0 = tracedf.loc[chase_frame, f'{yvar}_bg_sub']
+    if chase_frame < len(tracedf):
+        yt0 = tracedf.loc[chase_frame, f'{yvar}_bg_sub']
+    else:
+        print(f'Chase frame {chase_frame} outside of trace data of length {len(tracedf)}')
+        yt0 = tracedf.loc[tracedf.index.min(), f'{yvar}_bg_sub']
     y_norm = tracedf[f'{yvar}_bg_sub']/yt0
     if norm_col_name is None:
         yvar_name = yvar[-3:]
