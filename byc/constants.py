@@ -108,6 +108,7 @@ class Patterns(object):
         self.timepoint_mins = self.get_timepoint_mins()
         self.clone_number = self.get_clone_number()
         self.cell_index = self.get_cell_index()
+        self.channel_name = self.get_channel_name()
 
     def get_master_index_filename(self):
         """
@@ -285,6 +286,23 @@ class Patterns(object):
         text
         """
         pattern = r'(.*)'
+
+    def get_channel_name(self):
+        """
+        Return pattern for finding a channel name
+        in a string. e.g. "rfp", "yfp" etc.
+        """
+        channels = [
+            'bf',
+            'gf',
+            'yfp',
+            'rfp',
+            'mko',
+            'e2c'
+        ]
+        channels_str = '|'.join(channels)
+        pattern = f"({channels_str})"
+        return pattern
 
 patterns = Patterns()
 patterns_list = [patterns.genotype,
