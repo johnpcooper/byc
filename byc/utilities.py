@@ -335,7 +335,19 @@ def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
         if col not in mdf.columns and col != 'contains_aggregate':
             mdf.loc[:, col] = bud_rois_alldf.loc[:, col]
 
+def check_compartmentdir_for_channels(compartmentdir):
+    """
+    Retun a list of unique channel names found in .tif files
+    in the <compartmentdir>
 
+    Recognized channel names are stored in byc.constants.Patterns()
+    """
+    tif_fns = [f for f in os.listdir(compartmentdir)]
+    channel_matches = [re.search(constants.patterns.channel_name, fn) for fn in tif_fns]
+    channel_groups = [match.group() for match in channel_matches if match]
+    channels_collected = list(np.unique(channel_groups))
+
+    return channels_collected
 
 def generate_mdf(exptname, compartmentname, **kwargs):
     """
@@ -346,9 +358,12 @@ def generate_mdf(exptname, compartmentname, **kwargs):
 
     Return the generated master_index_df (mdf)
     """
-    channels = kwargs.get('channels', ['bf', 'yfp', 'rfp'])
     compdir = files.get_byc_compartmentdir(exptname, compartmentname)
     compdir = os.path.abspath(compdir)
+    # Check .tif files in the compartment directory to define 
+    # channels collected by default
+    channels = check_compartmentdir_for_channels(compdir)
+    channels = kwargs.get('channels', channels)
     cell_indices = get_cell_indices_in_compartment(compdir)
     mdf = pd.DataFrame({
         'cell_index': cell_indices
