@@ -992,3 +992,12 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
     # Delete tifs for individual frames now that the stack has been saved
     for filename in filenames:
         os.remove(filename)
+
+def filename_from_kwargs(kwargs):
+    """
+    Using the dict in <kwargs> (which are kwargs passed to a 
+    seaborn plotting method e.g. sns.lineplot(**kwargs)),
+    create a filename for the plot and return it
+    """
+    filename = '_'.join([f'{key}={val}' for key, val in kwargs.items() if key not in ['data', 'estimator', 'hue_order', 'palette']])
+    return filename
