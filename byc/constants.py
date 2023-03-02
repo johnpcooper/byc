@@ -294,7 +294,7 @@ class Patterns(object):
         """
         channels = [
             'bf',
-            'gf',
+            'gfp',
             'yfp',
             'rfp',
             'mko',
