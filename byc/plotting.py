@@ -993,11 +993,76 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
     for filename in filenames:
         os.remove(filename)
 
-def filename_from_kwargs(kwargs):
+def filename_from_kwargs(kwargs_dict, ext='.png'):
     """
     Using the dict in <kwargs> (which are kwargs passed to a 
     seaborn plotting method e.g. sns.lineplot(**kwargs)),
     create a filename for the plot and return it
     """
-    filename = '_'.join([f'{key}={val}' for key, val in kwargs.items() if key not in ['data', 'estimator', 'hue_order', 'palette']])
+    excluded_kws = ['data', 'estimator', 'hue_order', 'palette', 'ax', 'hue_order', 'order']
+    filename = '_'.join([f'{key}={val}' for key, val in kwargs_dict.items() if key not in excluded_kws])
+    filename = f'{filename}{ext}'
     return filename
+
+def save_figure(fig, kwargs_dict, ext='.png'):
+    """
+    Save the figure to byc.constants.source_dir.plots_dir
+    and print the saved location
+    """
+    filename = filename_from_kwargs(kwargs_dict, ext=ext)
+    savepath = os.path.abspath(os.path.join(constants.plots_dir, filename))
+    fig.savefig(savepath)
+    print(f'Saved figure at\n{savepath}')
+
+def get_dist_from_sen_color_map(max_dist_from_sen=20):
+    colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+    return colors
+
+def get_pre_post_sep_palette(
+        max_dist_from_sen=20,
+        index_for_post_sep=2,
+        index_for_pre_sep=None):
+    if not index_for_pre_sep:
+        index_for_pre_sep = max_dist_from_sen - 3
+    colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+    colors_list = [c for c in colors]
+    pre_post_SEP_palette = [colors_list[index_for_pre_sep], colors_list[index_for_post_sep]]
+
+    return pre_post_SEP_palette
+
+def plot_dist_from_sen_palette_key(
+        max_dist_from_sen=20,
+        major_tick_space=5,
+        minor_tick_space=1
+    ):
+
+    colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+    colors_list = [c for c in colors]
+
+    # Plot the continuous legend
+    fig, ax = figure_ax(height_scale=0.2, width_scale=0.75)
+    fig.set_dpi(300)
+    alpha = 0.8
+    x1 = np.arange(0, max_dist_from_sen, 1)
+    y = np.full(len(x1), 1)
+    colors_list_alpha = [matplotlib.colors.to_rgba(c, alpha) for c in colors_list]
+    for i, color in enumerate(colors_list_alpha):
+        x = np.arange(i-0.5, i+1.5, 1)
+        y = np.full(len(x), 0.5)
+        ax.fill_between(x, y, color=color, edgecolor=None)
+
+    ax.set_ylim(0, 1)
+    ax.set_xlim( max_dist_from_sen + 0.5, -0.5)
+    xticks = list(np.arange(0, max_dist_from_sen + 0.5, major_tick_space))
+    xticks.reverse()
+    ax.set_xticks(xticks)
+    ax.spines['left'].set_visible(False)
+    ax.yaxis.set_visible(False)
+    format_ticks(ax, tickdirection='out', xminorspace=minor_tick_space)
+    ax.set_xlabel("Buds before death")
+
+    filetype = '.svg'
+    savepath = os.path.join(os.getcwd(), f'plots\\gen_from_death_color_palette_max_dist_from_sen={max_dist_from_sen}{filetype}')
+    fig.set_tight_layout(True)
+    fig.savefig(savepath)
+    print(f'Saved figure at\n{savepath}')

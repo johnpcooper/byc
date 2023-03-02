@@ -35,7 +35,7 @@ steady_state_data_dir = "C:\\Users\\johnp\\Box\\Finkelstein-Matouschek\\images\\
 steady_state_data_path = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
 steady_state_rep_image_dir  = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\representative_images"
 flow_data_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/flow_cytometry"
-plots_dir = os.path.join(source_path, 'notebooks/plots')
+plots_dir = os.path.join(source_path, 'data/meta/plots')
 
 master_index_cols = ['date',
                      'expt_type',

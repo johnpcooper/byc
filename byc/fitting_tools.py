@@ -173,7 +173,7 @@ def get_shapiro_p(residuals):
 
 def exp_fit(cell_df, start_frame, fit_func=single_exp,
             col_name='yfp_norm', background_subtract=True,
-            transfer_all_cell_df_information=True, **kwargs):
+            transfer_all_cell_df_information=True, bounds=None, **kwargs):
     """
     Fit a single or double exponential function to the data in cell_df.col_name.
     X axis is cell_df.hours[0:end_frame - startframe]
@@ -241,7 +241,10 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
     # and error measurements to params_dict
     try:
         # Fit the data using the fit_func passed this function
-        popt, pcov = curve_fit(fit_func, x, y_norm)
+        if bounds:
+            popt, pcov = curve_fit(fit_func, x, y_norm, bounds=bounds)
+        else:
+            popt, pcov = curve_fit(fit_func, x, y_norm)
         y_pred_norm = fit_func(x, *popt)
         # Define r_sq and standard error of the estimate (est_std_err)
         print(f'Calculating resids')
@@ -283,7 +286,7 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
 def get_all_fits_df(dfs_list, start_frame, window_size,
                     fit_func=single_exp, col_name='yfp_norm',
                     background_subtract=True, expl_vars=None,
-                     **kwargs):
+                    bounds=None, **kwargs):
     
     background = kwargs.get('background', None)
     if window_size == 'max':
@@ -305,7 +308,8 @@ def get_all_fits_df(dfs_list, start_frame, window_size,
                                       fit_func=fit_func, col_name=col_name,
                                       background=background,
                                       background_subtract=background_subtract,
-                                      expl_var_names=expl_vars, window_width=window_size)
+                                      expl_var_names=expl_vars, window_width=window_size,
+                                      bounds=bounds)
             fit_params_dfs.append(pd.DataFrame(fit_params_dict))
         except Exception as e:
             print('fit failed for cell ', i)
