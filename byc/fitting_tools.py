@@ -286,9 +286,9 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
 def get_all_fits_df(dfs_list, start_frame, window_size,
                     fit_func=single_exp, col_name='yfp_norm',
                     background_subtract=True, expl_vars=None,
-                    bounds=None, **kwargs):
+                    bounds=None, manual_bg=None, **kwargs):
     
-    background = kwargs.get('background', None)
+    background = manual_bg
     if window_size == 'max':
         window_size = np.array([len(df) for df in dfs_list]).max()
     else:
