@@ -28,6 +28,10 @@ def single_exp(x, a, b, c):
 def double_exp(x, a, b, c, d, e):
     return a * np.exp(-b * x) + c * np.exp(-d * x) + e
 
+def line_exp(x, m, intercept, a, k, c):
+    y = (m*x + intercept) + (a*np.exp(-k*x) + c)
+    return y
+
 def gaussian(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
@@ -171,6 +175,23 @@ def get_shapiro_p(residuals):
 
     return shapiro_p
 
+def get_standard_exponential_bounds():
+    mins = np.array([
+        0.99,
+        0,
+        0
+    ])
+
+    maxes = np.array([
+        1.01,
+        np.inf,
+        np.inf
+    ])
+
+    bounds = (mins, maxes)
+
+    return bounds
+
 def exp_fit(cell_df, start_frame, fit_func=single_exp,
             col_name='yfp_norm', background_subtract=True,
             transfer_all_cell_df_information=True, bounds=None, **kwargs):
@@ -283,7 +304,7 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
 
     return params_dict
 
-def get_all_fits_df(dfs_list, start_frame, window_size,
+def get_all_fits_df(dfs_list, universal_start_frame, window_size,
                     fit_func=single_exp, col_name='yfp_norm',
                     background_subtract=True, expl_vars=None,
                     bounds=None, manual_bg=None, **kwargs):
@@ -301,7 +322,11 @@ def get_all_fits_df(dfs_list, start_frame, window_size,
         print(f'Fitting cell with index {cell_index}')
         # If the user passes None as start_frame, determine start
         # frame from chase_frame colum in cell df
-        start_frame = int(dfs_list[i]['chase_frame'].unique()[0])
+        if universal_start_frame is None:
+            start_frame = int(dfs_list[i]['chase_frame'].unique()[0])
+            print('Got start frame from trace dataframe')
+        else:
+            print('Using universal start frame')
         print(f'Using start frame {start_frame} for fit')
         try:
             fit_params_dict = exp_fit(dfs_list[i], start_frame,
@@ -559,6 +584,7 @@ def survival_fit(table, **kwargs):
     kmf = KaplanMeierFitter()
     T_col = kwargs.get('T_col', 'rls')
     E_col = kwargs.get('E_col', 'rls_observed')
+    n_cells = len(table)
     T = table[T_col]
     E = table[E_col]
 
@@ -570,17 +596,15 @@ def survival_fit(table, **kwargs):
 
     x_wbf = np.arange(0, T.max()+5, 1)
     y_wbf = [wbf.survival_function_at_times(x) for x in x_wbf]
+    # above gives a series for each value so need to cut
+    # it down to floats
+    y_wbf = [val.values[0] for val in y_wbf]
     # Find halflife of the kaplan meier and
     # weibull curves
     kmf_halflife = np.nan
     wbf_halflife = np.nan
-    kmf_diffs = np.abs(0.5 - np.array(y_kmf))
-    # wbf_diffs = np.abs(0.5 - np.array(y_wbf))
-    kmf_idx = np.argmin(np.array(kmf_diffs))
-    # wbf_idx = np.argmin(np.array(wbf_diffs))
-    # wbf_halflife = x_wbf[int(wbf_idx)]
-    kmf_halflife = x_kmf[int(kmf_idx)]
-
+    kmf_halflife = kmf.median_survival_time_
+    wbf_halflife = wbf.median_survival_time_
 
     keys = ['y_kmf',
             'x_kmf',
@@ -589,7 +613,10 @@ def survival_fit(table, **kwargs):
             'kmf', 
             'wbf',
             'kmf_halflife',
-            'wbf_halflife']
+            'wbf_halflife',
+            'n_cells',
+            'kmf_fit_object',
+            'wbf_fit_object']
 
     data = [y_kmf, 
             x_kmf, 
@@ -598,7 +625,10 @@ def survival_fit(table, **kwargs):
             kmf, 
             wbf,
             kmf_halflife,
-            wbf_halflife]
+            wbf_halflife,
+            n_cells,
+            kmf,
+            wbf]
     
     fit_dict = dict(zip(keys, data))
     
@@ -652,7 +682,10 @@ def df_from_ModelResult(result: ModelResult):
     for key in fit_params.keys():
         param = fit_params.get(key)
         stderr = param.stderr
-        std_err_fraction = stderr/param
+        if stderr:
+            std_err_fraction = stderr/param
+        else:
+            std_err_fraction = None
         fitdict[key] = param.value
         fitdict[f"{key}_stderr"]= stderr
         fitdict[f"{key}_stderr_fraction"] = std_err_fraction
