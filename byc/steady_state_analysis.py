@@ -439,3 +439,10 @@ def filter_small_rois(dataframe, **kwargs):
     df = df[keep_mask]
 
     return df
+
+class Constants():
+
+    def __init__(self):
+        # See analysis of 20230216 imaging of JPC121 in YFP and 
+        # RFP channels for derivation of this value
+        self.yfp_to_rfp_compensation_factor = 0.04019830128347812

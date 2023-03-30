@@ -372,8 +372,10 @@ def add_first_crop_frame(mdf):
     for idx in mdf.index:
         cell_index = mdf.loc[idx, 'cell_index']
         crop_roi_set_relpath = mdf[mdf.cell_index==cell_index].crop_roi_set_relpath.iloc[0]
+        # print(f'Crop roi set relpath:\n{crop_roi_set_relpath}')
         crop_roi_set_path = os.path.join(constants.byc_data_dir, crop_roi_set_relpath)
         print(f'Looking for crop roi set path for cell {cell_index} at \n{crop_roi_set_path}')
+        mdf.loc[idx, 'crop_roi_set_path'] = crop_roi_set_path
         crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
         first_crop_roi_pos = crop_roi_df.loc[0, 'position']
         mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_pos - 1
@@ -381,7 +383,7 @@ def add_first_crop_frame(mdf):
     return mdf
 
 
-def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
+def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
 
     default_chase_frame = 150
 
@@ -426,8 +428,19 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
             print(f'Read in bud_roi_set at\n{bud_roi_set_path}')
             bud_roi_df = files.read_rectangular_rois_as_df(bud_roi_set_path)
             bud_roi_df.loc[:, 'frame'] = bud_roi_df.position - 1
-            age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=abs_chase_frame, :])
-            dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>abs_chase_frame, :]) - death_offset
+            if daughters == False:
+                age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=abs_chase_frame, :])
+                dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>abs_chase_frame, :]) - death_offset
+            else:
+                # If we're annotating daughters "dist_from_sen", then dist_from_sen means
+                # the age/dist_from_sen of the mother cells when the daughter cell was
+                # born. In that case, mother dist_from_sen when daughter is born should
+                # be calculate as number of buds appearing after first crop frame of the daughter
+                # because that first crop frame will be when the daughter was born
+                first_crop_frame = mdf.loc[idx, 'first_crop_frame']
+                print(f'Annotating mother dist from sen when daughter was born')
+                age_at_chase = len(bud_roi_df.loc[bud_roi_df.frame<=first_crop_frame, :])
+                dist_from_sen = len(bud_roi_df.loc[bud_roi_df.frame>first_crop_frame, :]) - death_offset
             print(f'Gen. from senescence = {dist_from_sen}')
             rls = len(bud_roi_df) - death_offset
             # Annotate master index df with cell survival, first bud roi,
@@ -445,7 +458,6 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False):
             print(f"Final dist from sen={mdf.loc[idx, 'dist_from_sen']}")
         else:
             print(f'No bud roi set found at:\n{bud_roi_set_path}')
-            print(f'No crop roi set found at:\n{crop_roi_set_path}')
     if return_bud_roi_df:
         print(f'Returning mdf and bud_mdf')
         return (mdf, pd.concat(bud_dfs, ignore_index=True))
@@ -491,7 +503,7 @@ def t0_normalize_trace_df(cell_trace_df, yvar='Mean_yfp', **kwargs):
     return cell_trace_df
 
 def create_and_annotate_mdf(exptname, compartmentname,
-                            channels=None,
+                            channels=None, daughters=False,
                             **kwargs):
     """
     Look in the compartmentdir found using <exptname> and
@@ -531,6 +543,11 @@ def create_and_annotate_mdf(exptname, compartmentname,
             return mdf
     else:
         print(f"Using user defined mdf and savepath")
+    # Make sure that the relpaths set in the master index are truly
+    # relative
+    for col in mdf.columns:
+        if 'rel' in col:
+            mdf.loc[:, col] = [utilities.get_relpath(val) for val in mdf[col].values]
     mdf = add_first_crop_frame(mdf)
     # Annotate when the chases start
     mdf.loc[:, 'chase_frame'] = np.nan
@@ -562,8 +579,11 @@ def create_and_annotate_mdf(exptname, compartmentname,
     compartmentdir = files.get_byc_compartmentdir(exptname, compartmentname)
     print(f'Found compartment directory:\n{compartmentdir}')
     bud_mdf = files.mdf_from_file_pattern(compartmentdir, file_pattern, mdf_type=mdf_type, return_savepath=False)
+    for col in mdf.columns:
+        if 'rel' in col:
+            mdf.loc[:, col] = [utilities.get_relpath(val) for val in mdf[col].values]
     if add_buds_to_mdf:
-        mdf = annotate_buds(mdf, bud_mdf)
+        mdf = annotate_buds(mdf, bud_mdf, daughters=daughters)
     else:
         print(f'Not annotating budding events on master index')
     # print(mdf.dist_from_sen.unique())

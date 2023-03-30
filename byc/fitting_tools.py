@@ -685,7 +685,7 @@ def df_from_ModelResult(result: ModelResult):
         if stderr:
             std_err_fraction = stderr/param
         else:
-            std_err_fraction = None
+            std_err_fraction = 0
         fitdict[key] = param.value
         fitdict[f"{key}_stderr"]= stderr
         fitdict[f"{key}_stderr_fraction"] = std_err_fraction
@@ -701,7 +701,8 @@ def fit_logistic_to_fits_df(
     name=None,
     fitting_func=logistic,
     plot_results=False,
-    return_result=False
+    return_result=False,
+    sep_border=5
     ):
     if name is None:
         name = sub_fits_df.strain_name.iloc[0]
@@ -710,25 +711,32 @@ def fit_logistic_to_fits_df(
     table = sorted_subdf.pivot_table(index=xvar, aggfunc=np.median).reset_index()
     df = sorted_subdf
 
-    logistic_model= Model(fitting_func)
+    logistic_model = Model(fitting_func)
+    bounds_margin = 0.05
+    young_k_median = df[df.dist_from_sen>sep_border].b.median()
+    offset = df[df.dist_from_sen==0].b.median()
+    L = young_k_median - offset
 
     params = Parameters()
     bounds_dict = {
-        'L': (-2, 5),
-        'k': (-10, 10),
-        'x_center': (0, 12),
-        'offset': (-2, 5)
+        'L': (L - bounds_margin*L, L + bounds_margin*L),
+        'k': (0, 10),
+        'x_center': (0, 8),
+        'offset': (offset - bounds_margin*offset, offset + bounds_margin*offset)
     }
 
     guesses_dict = {
-        'L': 2,
+        'L': L,
         'k': 2,
         'x_center': 3,
-        'offset': 1
+        'offset': offset
     }
 
     for key, val in bounds_dict.items():
-        params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val))
+        if key in ['L', 'offset']:
+            params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val), vary=False)
+        else:
+            params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val))
 
     result = logistic_model.fit(df[yvar], params, x=df[xvar])
 

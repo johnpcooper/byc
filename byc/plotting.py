@@ -939,7 +939,8 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
     frames_table = allframesdf.set_index('frame_rel')
     cell_index = frames_table.cell_index.iloc[0]
     cellname = f'{frames_table.compartment_name.iloc[0]}_cell{str(cell_index).zfill(3)}_roi_{channel}_stack.tif'
-    savepath = os.path.join(frames_table.compartment_dir.iloc[0], f'{cellname}')
+    savedir = os.path.join(constants.byc_data_dir, frames_table.compartment_reldir.iloc[0])
+    savepath = os.path.join(savedir, f'{cellname}')
     if not draw_outline:        
         savepath = savepath.replace('.tif', '_no-outline.tif')
     
@@ -1020,7 +1021,7 @@ def get_dist_from_sen_color_map(max_dist_from_sen=20):
 
 def get_pre_post_sep_palette(
         max_dist_from_sen=20,
-        index_for_post_sep=2,
+        index_for_post_sep=0,
         index_for_pre_sep=None):
     if not index_for_pre_sep:
         index_for_pre_sep = max_dist_from_sen - 3
@@ -1033,7 +1034,8 @@ def get_pre_post_sep_palette(
 def plot_dist_from_sen_palette_key(
         max_dist_from_sen=20,
         major_tick_space=5,
-        minor_tick_space=1
+        minor_tick_space=1,
+        ext='.svg'
     ):
 
     colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
@@ -1061,8 +1063,45 @@ def plot_dist_from_sen_palette_key(
     format_ticks(ax, tickdirection='out', xminorspace=minor_tick_space)
     ax.set_xlabel("Buds before death")
 
-    filetype = '.svg'
+    filetype = ext
     savepath = os.path.join(os.getcwd(), f'plots\\gen_from_death_color_palette_max_dist_from_sen={max_dist_from_sen}{filetype}')
     fig.set_tight_layout(True)
+    plt.tight_layout()
     fig.savefig(savepath)
     print(f'Saved figure at\n{savepath}')
+
+strains_color_dict = {
+    'JPC000': (255/255, 102/255, 71/255),
+    'JPC227': (255/255, 102/255, 71/255),
+    'JPC228': (255/255, 102/255, 71/255),
+    'JPC258': (255/255, 102/255, 71/255),
+    'JPC257': (255/255, 102/255, 71/255),
+    'JPC122': (255/255, 57/255, 86/255),
+    'JPC083': (255/255, 57/255, 86/255),
+    'JPC261': (255/255, 57/255, 86/255),
+    'JPC260': (255/255, 57/255, 86/255),
+    'JPC121': (255/255, 147/255, 4/255),
+    'JPC263': (255/255, 147/255, 4/255),
+    'JPC146': (255/255, 147/255, 4/255),
+    'JPC220': (255/255, 147/255, 4/255),
+    'JPC262': (200/255, 55/255, 55/255),
+    'JPC136': (108/255, 83/255, 83/255),
+    'JPC193': (106/255, 0/255, 128/255),
+    'JPC196': (237/255, 132/255, 223/255),
+    'JPC199': (237/255, 132/255, 223/255),
+}
+
+other_colors = {
+    'dsred': (255/255, 0/255, 255/255),
+    'Rpt1': (215/255, 215/255, 244/255),
+    'Pre6': (102/255, 102/255, 102/255),
+    'Pre9': (102/255, 102/255, 102/255),
+    'Hsp104': (106/255, 0/255, 128/255),
+    'Ubr2': (200/255, 55/255, 55/255),
+    'Ssa1': (237/255, 132/255, 223/255),
+    'Ubr1': (108/255, 83/255, 83/255),
+    'Rpt1': (215/255, 215/255, 244/255),
+    'mode1': (255/255, 0/255, 156/255),
+    'mode2': (0/255, 14/255, 205/255),
+    'aggregate': (193/255, 180/255, 154/255)
+}

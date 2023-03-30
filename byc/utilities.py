@@ -108,8 +108,9 @@ def get_relpath(abspath, **kwargs):
     if keyword in abspath:
         relpath = abspath[abspath.rindex(keyword) + len(keyword)+1:]
     else:
-        print(f'{keyword} not found in path:\n{abspath}')
-        relpath = None
+        print(f'The word {keyword} not found in path:\n{abspath}')
+        print(f'Returning original path because it is probably already relative')
+        relpath = abspath
     return relpath
 
 def get_master_index_tags(match):
@@ -425,3 +426,7 @@ def check_for_crop_stack_exist(mdf):
         return False
     else:
         return True
+    
+def name_chasedex(col1, col2):
+    y = f'cell{str(int(col1)).zfill(3)}_at_frame{str(int(col2)).zfill(3)}'
+    return y

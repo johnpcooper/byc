@@ -916,7 +916,7 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     coordinates
     """
     distance_max = kwargs.get('distance_max', 25)
-    distance_min = kwargs.get('distance_min', 7)
+    distance_min = kwargs.get('distance_min', 6)
     theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
     dist_bin_size = kwargs.get('dist_bin_size', 1)
     thetas = np.arange(-np.pi, np.pi, theta_bin_size)
@@ -986,7 +986,6 @@ def polar_intensity_peaks(
     
     found_previous_peak = False
     if use_constant_circle_roi:
-        # Add cartesian coordinates for max amplitude peak found
         print(f'Using default constant circle with radius {default_radius_px}')
 
     for t in df.theta.unique():

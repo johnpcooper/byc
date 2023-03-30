@@ -158,9 +158,6 @@ class DataBase():
             writepath = writepaths[i]
             df.to_csv(writepath, index=False)
 
-byc_database = DataBase()
-
-
 def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
     """
     After preliminary analysis and data fitting, write a final
@@ -403,15 +400,24 @@ def set_bud_id(df, include_compartment=True):
     df.loc[:, 'bud_id'] = np.nan
     df.loc[:, 'compartment-bud_id'] = np.nan
     for idx in df.index.unique():
-        comp_name = df.loc[idx ,'compartment_name']
-        path = df.loc[idx, 'bud_rois_path']
+        if include_compartment:
+            comp_name = df.loc[idx ,'compartment_name']
+        if 'bud_rois_path' in df.columns:
+            path = df.loc[idx, 'bud_rois_path']
+        elif 'bud_roi_set_path' in df.columns:
+            path = df.loc[idx, 'bud_roi_set_path']
+        else:
+            print(f'No column with bud roi set path')
+            return None
 
         if not type(path) == float:
+            # print(f'Reading in bud rois from\n{path}')
             if os.path.exists(path):
                 bud_roi_df = files.read_rectangular_rois_as_df(path)
                 bud_roi_serial = '-'.join([str(val) for val in bud_roi_df.position.values - 1])
 
-                df.loc[idx, 'compartment-bud_id'] = f'{comp_name}-{bud_roi_serial}'
+                if include_compartment:
+                    df.loc[idx, 'compartment-bud_id'] = f'{comp_name}-{bud_roi_serial}'
                 df.loc[idx, 'bud_id'] = bud_roi_serial
             else:
                 df.loc[idx, 'compartment-bud_id'] = np.nan
@@ -594,3 +600,15 @@ def annotate_daughter_shapes(bud_rois_df):
     # bud i appears is the shape of bud i-1
     bud_rois_df.loc[0:bud_rois_df.index.max()-1, 'bud_shape'] = bud_rois_df.bud_shape[1:].values
     bud_rois_df.loc[bud_rois_df.index.max(), 'bud_shape'] = np.nan
+
+def get_crop_roi_df_from_cell_index_compdir(cell_index, compartment_dir):
+
+    crop_roi_df_fns = [fn for fn in os.listdir(compartment_dir) if 'crop_rois_df.csv' in fn]
+    crop_roi_df_fn = [fn for fn in crop_roi_df_fns if str(cell_index).zfill(3) in fn][0]
+    crop_roi_df_path = os.path.join(compartment_dir, crop_roi_df_fn)
+    crop_roi_df = pd.read_csv(crop_roi_df_path)
+
+    return crop_roi_df
+
+if __name__ == '__main__':
+    byc_database = DataBase()
