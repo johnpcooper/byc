@@ -285,7 +285,9 @@ class Patterns(object):
         like "cell001" in filenames and other kinds of
         text
         """
-        pattern = r'(.*)'
+        numbers = '|'.join([str(num).zfill(3) for num in range(0, 1000)])
+        pattern = f"(cell)({numbers})"
+        return pattern
 
     def get_channel_name(self):
         """

@@ -199,7 +199,8 @@ def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
         else:
             final_agg_idx.append(col)
     print(f'Using {final_agg_idx} to make pivot table of fits_df')
-    fits_table = pd.pivot_table(index=final_agg_idx, data=fits_df).reset_index()
+    number_cols = [col for col in fits_df.columns if fits_df[col].dtype!='O']
+    fits_table = pd.pivot_table(index=final_agg_idx, data=fits_df.loc[:, number_cols]).reset_index()
     # Label `fits_table` because non-number data gets eliminated when
     # creating the pivot table
     fits_table = sa.merge_dfs(mdf, fits_table, idx=final_agg_idx)
@@ -473,7 +474,7 @@ class BudDataBase():
             else:
                 bud_roi_df = pd.DataFrame(None)
             bud_roi_dfs.append(bud_roi_df)
-
+            print(f'Read in bud roi set {i} of {len(bud_roi_paths)}', end='\r')
         return bud_roi_dfs
 
     def get_buddf(self):
@@ -483,7 +484,7 @@ class BudDataBase():
         for i, df in enumerate(self.bud_roi_dfs):
             cell_index = bud_roi_cell_inds[i]
             if not df.empty:
-                print(f'Annotating cell cycle features for cell {cell_index}')
+                # print(f'Annotating cell cycle features for cell {cell_index}')
                 # Make sure that bud appearance slices ('position') are in
                 # correct order so that deltas make sense
                 df.sort_values(by='position', ascending=True, inplace=True)
@@ -564,7 +565,7 @@ class BudDataBase():
             else:
                 df = pd.DataFrame({'cell_index': cell_index}, index=[0])
             df.loc[:, 'compartment_name'] = os.path.basename(os.path.dirname(rois_df_path))
-
+            print(f'Annotated bud roi set {i} of {len(self.bud_roi_dfs)}', end='\r')
         buddf = pd.concat(self.bud_roi_dfs, ignore_index=True)
         
         return buddf
@@ -609,6 +610,60 @@ def get_crop_roi_df_from_cell_index_compdir(cell_index, compartment_dir):
     crop_roi_df = pd.read_csv(crop_roi_df_path)
 
     return crop_roi_df
+
+def read_in_trace_fits_buds_dfs():
+    """
+    Read in and return aggregated exponentially fit cell YFP vs. time traces,
+    fits_df with one row per cell and exponential fit results, and buds_df with
+    bud appearance events for each cell
+
+    Return traces_df, fits_df, buds_df
+    """
+
+    dfs = []
+
+    names = [
+        'traces_df.csv.gzip',
+        'fits_df.csv.gzip',
+        'buds_df.csv.gzip'
+    ]
+
+    for i, df in enumerate(names):
+        savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
+        df = pd.read_csv(savepath, compression='gzip')
+        dfs.append(df)
+        print(f'Read dataframe at\n{savepath}')
+
+    traces_df, fits_df, buds_df = dfs
+
+    return traces_df, fits_df, buds_df
+
+def write_trace_fits_buds_dfs(traces_df, fits_df, buds_df, save_non_gzip=False):
+    """
+    Save the trace, fit, and buds dataframes created in Manuscript.ipynb to disc
+
+    Return nothing
+    """
+    dfs = [traces_df, fits_df, buds_df]
+
+    names = [
+        'traces_df.csv.gzip',
+        'fits_df.csv.gzip',
+        'buds_df.csv.gzip'
+    ]
+
+    for i, df in enumerate(dfs):
+        savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
+        df.to_csv(savepath, compression='gzip')
+        print(f'Saved dataframe at\n{savepath}')
+
+    if save_non_gzip:
+        names = [name.replace('.gzip', '') for name in names]        
+        for i, df in enumerate(dfs):
+            savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
+            df.to_csv(savepath, index=False)
+            print(f'Saved dataframe at\n{savepath}')
+        
 
 if __name__ == '__main__':
     byc_database = DataBase()

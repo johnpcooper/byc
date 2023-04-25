@@ -403,7 +403,10 @@ def scan_start_frames(cell_df, col_name='yfp_norm', fit_func=single_exp, window_
     print(f'Found {len(fit_results)} fit_results')
     for fit_result in fit_results:
         try:
-            fit_result_row_df = fit_result.groupby(by='cell_index').median().reset_index()
+            # Need to only aggregate data on non-string columns otherwise newer versions
+            # otherwise aggregating won't work
+            cols = [col for col in fit_result.columns if fit_result[col].dtype!='O']
+            fit_result_row_df = fit_result.loc[:, cols].groupby(by='cell_index').median().reset_index()
             fit_result_row_df.loc[:, 'start_frame'] = start_frames[frame_index]
             fit_result_dfs_list.append(fit_result_row_df)
             df_index += 1
@@ -707,8 +710,6 @@ def fit_logistic_to_fits_df(
     if name is None:
         name = sub_fits_df.strain_name.iloc[0]
     sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=False)
-    # In case you want to fit to median of data per x instead of all data
-    table = sorted_subdf.pivot_table(index=xvar, aggfunc=np.median).reset_index()
     df = sorted_subdf
 
     logistic_model = Model(fitting_func)

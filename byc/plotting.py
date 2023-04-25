@@ -927,7 +927,7 @@ def save_skimage_stack_as_mp4(filepaths, savepath, **kwargs):
     # Release file from memory
     video.release()
 
-def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_outline=True):
+def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_outline=True, save_tif_stack=False):
     """
     Using the segmentation data found in <allframesdf>, annotate cell outline
     ROI and write timestamp on each frame of the <channel> stack in 
@@ -986,10 +986,12 @@ def save_segmentation_visualization(allframesdf, channel, cellstacksdict, draw_o
         frames.append(img)
     filepaths = [os.path.join(os.getcwd(), fname) for fname in filenames]
     save_skimage_stack_as_mp4(filepaths, savepath.replace('.tif', '.mp4'))
-    stack = io.concatenate_images(frames)
     print(f'Saved stack at \n{savepath}')
-    # Save original tif stack
-    io.imsave(savepath, stack)
+    if save_tif_stack:
+        stack = io.concatenate_images(frames)# Save original tif stack
+        io.imsave(savepath, stack)
+    else:
+        pass
     # Delete tifs for individual frames now that the stack has been saved
     for filename in filenames:
         os.remove(filename)
@@ -1011,6 +1013,10 @@ def save_figure(fig, kwargs_dict, ext='.png'):
     and print the saved location
     """
     filename = filename_from_kwargs(kwargs_dict, ext=ext)
+    # Get rid of problematic characters that may have come from
+    # column titles etc.
+    filename.replace('/', 'over')
+    filename.replace('\\', 'over')
     savepath = os.path.abspath(os.path.join(constants.plots_dir, filename))
     fig.savefig(savepath)
     print(f'Saved figure at\n{savepath}')

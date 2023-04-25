@@ -976,7 +976,7 @@ def polar_intensity_peaks(
     # inside the cell and not overlapping with other cells
     use_median_filtered_intensity = True
     peak_dist_offset = kwargs.get('peak_offset', -2)
-    peak_height_threshold = kwargs.get('peak_height_threshold', 2000)
+    peak_height_threshold = kwargs.get('peak_height_threshold', 500)
     medfilt_kern_size = kwargs.get('medfilt_kern_size', 3)
     df = polar_intensity_df
     df.loc[:, 'peak_X'] = np.nan
@@ -1018,6 +1018,9 @@ def polar_intensity_peaks(
                     # which distance from center we started from
                     highest_peak_dist = peaks[0][highest_peak_index] + df.peak_dist_offset.iloc[0]
                 first_peak_dist = peaks[0][0] + df.peak_dist_offset.iloc[0]
+                if first_peak_dist <= 1: 
+                    print(f'Found unusable peak radius of {first_peak_dist}, using defaul of {default_radius_px}')
+                    first_peak_dist = default_radius_px
                 # This peak dist offset is a way to arbitrarily scale the 
                 # size of the ROI and ensure we're not getting area outside
                 # the cell
@@ -1663,9 +1666,9 @@ def segment_stack_with_fluor(stack, **kwargs):
             ]
     )
     # area_max_cutoff = kwargs.get('area_max_cutoff', 250)
-    width_max_cutoff = kwargs.get('width_max_cutoff', 20)
-    cell_box_mask_width = kwargs.get('cell_box_mask_width', 10)
-    cell_box_mask_height = kwargs.get('cell_box_mask_height', 10)
+    width_max_cutoff = kwargs.get('width_max_cutoff', 30)
+    cell_box_mask_width = kwargs.get('cell_box_mask_width', 20)
+    cell_box_mask_height = kwargs.get('cell_box_mask_height', 20)
     roundness_min = kwargs.get('roundness_min', 0.9)
     area_min = kwargs.get('area_min', 40)
     maskpath_suffix = kwargs.get('maskpath_suffix', '')
