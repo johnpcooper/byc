@@ -23,7 +23,10 @@ if __name__=="__main__":
     # per frame as well as mean intensity within cell
     # ROI per frame
     write_segmentation_df = False
-    plot_segmentation_results = True
+    plot_segmentation_results = False
+    print(f'Received {len(sys.argv)} arg variables')
+    for v in sys.argv:
+        print(v)
 
     if len(sys.argv) == 2:
         compartmentname = sys.argv[1]
@@ -44,7 +47,7 @@ if __name__=="__main__":
         # compartment directory
         splitname = compartmentname.split('_')
         exptname = '_'.join(splitname[0:2])
-        channels = str(sys.argv[2]).split(' ')
+        channels = str(sys.argv[2]).split('-')
         # Need to strip non-alpha numerics because somehow
         # quote symbols end up in string when passing
         # 'ch1 ch2 ch3' as argv
@@ -120,7 +123,7 @@ if __name__=="__main__":
         kwargs = {
             'use_img_inverse': True,
             'use_constant_circle_roi': False,
-            'default_radius_px': 12
+            'default_radius_px': 9
         }
         allframesdf = segmentation.cell_stack_I_by_distance_and_theta(*args, **kwargs)
         # Filter outliers from within theta groups
