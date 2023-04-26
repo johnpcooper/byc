@@ -23,7 +23,7 @@ if __name__=="__main__":
     # per frame as well as mean intensity within cell
     # ROI per frame
     write_segmentation_df = False
-    plot_segmentation_results = False
+    plot_segmentation_results = True
     print(f'Received {len(sys.argv)} arg variables')
     for v in sys.argv:
         print(v)
@@ -123,8 +123,11 @@ if __name__=="__main__":
         kwargs = {
             'use_img_inverse': True,
             'use_constant_circle_roi': False,
-            'default_radius_px': 9
+            'default_radius_px': 5
         }
+        # If you want to change the distance from center at which the algorithm starts looking
+        # for peaks, you need to change distance_min = kwargs.get('distance_min', 6) in the 
+        # segmentation.py intensity_by_distance_and_theta() function
         allframesdf = segmentation.cell_stack_I_by_distance_and_theta(*args, **kwargs)
         # Filter outliers from within theta groups
         allframesdf = segmentation.filter_outlier_peaks(allframesdf)
@@ -203,7 +206,8 @@ if __name__=="__main__":
     # radial distance per frame)
     idx = ['cell_index',
         'frame_rel']
-    table = pd.pivot_table(allmeasureddf, index=idx).reset_index()
+    cols = [col for col in allmeasureddf.columns if allmeasureddf[col].dtype!='O']
+    table = pd.pivot_table(allmeasureddf.loc[:, cols], index=idx).reset_index()
     filename = f'{exptname}_alldf.csv'
     savepath = os.path.join(writedir, filename)
     if os.path.exists(savepath):

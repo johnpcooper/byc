@@ -916,7 +916,7 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     coordinates
     """
     distance_max = kwargs.get('distance_max', 25)
-    distance_min = kwargs.get('distance_min', 6)
+    distance_min = kwargs.get('distance_min', 2)
     theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
     dist_bin_size = kwargs.get('dist_bin_size', 1)
     thetas = np.arange(-np.pi, np.pi, theta_bin_size)
@@ -1145,8 +1145,8 @@ def get_frame_cell_mask(allframesdf, measurement_stack, frame_idx):
     R, theta = get_polar_coordinates(cellframecrop,
                                      x_center_rel,
                                      y_center_rel)
-
-    frametable = cellframedf.pivot_table(index='theta', aggfunc='mean').reset_index()
+    cols = [col for col in cellframedf.columns if cellframedf[col].dtype!='O']
+    frametable = cellframedf.loc[:, cols].pivot_table(index='theta', aggfunc='mean').reset_index()
     mask = np.full(cellframecrop.shape, False)
     for idx in frametable.index:
         theta_mask1 = np.greater(theta, frametable.loc[idx, 'min_theta'])
@@ -1379,7 +1379,8 @@ def filter_outlier_peaks(allframesdf, threshold=0.7):
     """
     print(f'Filtering outliers with peaks less than {threshold} of median by theta')
     allframesdf.loc[:, 'highest_peak_dist_corrected'] = allframesdf.highest_peak_dist
-    median_table_by_theta = allframesdf.pivot_table(index=['theta'], aggfunc=np.median)
+    cols = [col for col in allframesdf.columns if allframesdf[col].dtype != 'O']
+    median_table_by_theta = allframesdf.loc[:, cols].pivot_table(index=['theta'], aggfunc=np.median)
     all_theta_median = median_table_by_theta.highest_peak_dist.median()
     allframesdf.set_index('theta', inplace=True)
 
@@ -1491,7 +1492,8 @@ def cell_tracedf_from_outline_df(
         'cell_index',
         'cell_mask_stack_path'
     ]
-    outline_df_table = outline_df.pivot_table(index=aggdex, aggfunc=np.median).reset_index()
+    cols = [col for col in outline_df.columns if outline_df[col].dtype != 'O']
+    outline_df_table = outline_df.loc[:, cols].pivot_table(index=aggdex, aggfunc=np.median).reset_index()
     # Aggregate the outline_df used above to create masks down to
     # one row per frame
     outline_df_table.loc[:, crop_path_colname] = crop_stack_path
