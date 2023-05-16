@@ -136,8 +136,17 @@ def get_r_sq_with_multi_y_per_x(
     sub_fits_df,
     xvar='dist_from_sen',
     yvar='b',
+    return_new_y_ypreds=False
 ):
     """
+    Calculate the r sqared value of the ability of <y_pred> vs. <x_smooth> to predict
+    varation in <sub_fits_df>[<yvar>] vs. <sub_fits_df>[<xvar>]
+
+    If there are multiple y values in <sub_fits_df> per xvar, each of these y values will
+    be subtracted from y_pred at that x value. So we end up with a list of residuals containing
+    one value for every value in sub_fits_df.
+
+    Return r_sq value as float
     """
     sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=False)
     residuals_across_all_x = []
@@ -157,8 +166,10 @@ def get_r_sq_with_multi_y_per_x(
     y_pred_values = np.array(y_pred_values)
     y_data_values = np.array(y_data_values)
     r_sq = get_r_squared(y_data_values, y_pred_values)
-    
-    return r_sq
+    if return_new_y_ypreds:
+        return r_sq, y_data_values, y_pred_values
+    else:
+        return r_sq
 
 def get_shapiro_p(residuals):
     """
@@ -637,6 +648,20 @@ def survival_fit(table, **kwargs):
     
     return fit_dict
 
+def add_conf_interval_to_survival_fit_df(survival_fit_df, survival_fit_dict):
+    """
+    Annotate the survival fit df generated using survival_fit_dict created 
+    with survival_fit() with the 95% confidence interval according to
+    Kaplan-meier fit
+
+    Modify <survival_fit_df> in place and return nothing
+    """
+    # Add confidence intervals
+    for generation in survival_fit_df.generations_kmf:
+        conf_df = survival_fit_dict['kmf_fit_object'].confidence_interval_
+        survival_fit_df.loc[survival_fit_df.generations_kmf==generation, 'KM_lower_95'] = conf_df.loc[generation, 'KM_estimate_lower_0.95']
+        survival_fit_df.loc[survival_fit_df.generations_kmf==generation, 'KM_upper_95'] = conf_df.loc[generation, 'KM_estimate_upper_0.95']
+
 def univariate_spline(df, **kwargs):
     """
     Use scipy.interpolate.UnivariateSpline to create a spline
@@ -705,7 +730,8 @@ def fit_logistic_to_fits_df(
     fitting_func=logistic,
     plot_results=False,
     return_result=False,
-    sep_border=5
+    sep_border=5,
+    slope_guess=0.5
     ):
     if name is None:
         name = sub_fits_df.strain_name.iloc[0]
@@ -715,7 +741,7 @@ def fit_logistic_to_fits_df(
     logistic_model = Model(fitting_func)
     bounds_margin = 0.05
     young_k_median = df[df.dist_from_sen>sep_border].b.median()
-    offset = df[df.dist_from_sen==0].b.median()
+    offset = df[df.dist_from_sen.between(0, 2, inclusive='both')].b.median()
     L = young_k_median - offset
 
     params = Parameters()
@@ -728,16 +754,21 @@ def fit_logistic_to_fits_df(
 
     guesses_dict = {
         'L': L,
-        'k': 2,
+        'k': slope_guess,
         'x_center': 3,
         'offset': offset
     }
 
+    vary_dict = {
+        'L': False,
+        'k': True,
+        'x_center': True,
+        'offset': False
+    }
+
+
     for key, val in bounds_dict.items():
-        if key in ['L', 'offset']:
-            params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val), vary=False)
-        else:
-            params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val))
+        params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val), vary=vary_dict[key])
 
     result = logistic_model.fit(df[yvar], params, x=df[xvar])
 

@@ -375,15 +375,24 @@ def add_first_crop_frame(mdf):
         # print(f'Crop roi set relpath:\n{crop_roi_set_relpath}')
         crop_roi_set_path = os.path.join(constants.byc_data_dir, crop_roi_set_relpath)
         print(f'Looking for crop roi set path for cell {cell_index} at \n{crop_roi_set_path}')
-        mdf.loc[idx, 'crop_roi_set_path'] = crop_roi_set_path
-        crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
-        first_crop_roi_pos = crop_roi_df.loc[0, 'position']
-        mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_pos - 1
+        if os.path.exists(crop_roi_set_path):
+            mdf.loc[idx, 'crop_roi_set_path'] = crop_roi_set_path
+            crop_roi_df = files.read_rectangular_rois_as_df(crop_roi_set_path)
+            first_crop_roi_pos = crop_roi_df.loc[0, 'position']
+            first_crop_roi_frame = first_crop_roi_pos - 1
+            
+        else:
+            first_crop_roi_frame = np.nan
+
+        mdf.loc[idx, 'first_crop_frame'] = first_crop_roi_frame
         
     return mdf
 
 
-def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
+def annotate_buds(mdf, buds_mdf,
+                  return_bud_roi_df=False,
+                  daughters=False,
+                  observed_since_start_cutoff_frame=18):
 
     default_chase_frame = 150
 
@@ -399,8 +408,10 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
         pass
     bud_dfs = []
     for idx in buds_mdf.index:
-        bud_roi_set_path = buds_mdf.bud_roi_set_relpath[idx]
-        bud_roi_set_path = os.path.join(constants.byc_data_dir, bud_roi_set_path)
+        # Make sure it's actually a relative path. It's often misannotated
+        # in older data
+        bud_roi_set_relpath = utilities.get_relpath(buds_mdf.bud_roi_set_relpath[idx])
+        bud_roi_set_path = os.path.join(constants.byc_data_dir, bud_roi_set_relpath)
         cell_index = buds_mdf.cell_index[idx]
         print(f'Annotating bud appearance frames for cell {cell_index}')
         if 'abs_chase_frame' in mdf.columns:
@@ -422,7 +433,10 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
             death_offset = 0
             print(f'Death not observed for cell {cell_index}')
         elif buds_mdf.loc[idx, 'end_event_type'] == 'escape':
-            death_offset = 0
+            # If the cell escapes, the last frame is still 
+            # the last frame at which it was een alive, so 
+            # the last frame is not an actual budding event
+            death_offset = 1
         if os.path.exists(bud_roi_set_path):
             mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
             print(f'Read in bud_roi_set at\n{bud_roi_set_path}')
@@ -445,6 +459,11 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
             rls = len(bud_roi_df) - death_offset
             # Annotate master index df with cell survival, first bud roi,
             # distance from senescence at start of chase, etc.
+            mdf.loc[idx, 'bud_id'] = mdf.loc[idx, 'compartment_name'] +'-' + '-'.join(bud_roi_df.frame.apply(lambda x: str(x)))
+            if bud_roi_df.frame.min() <= observed_since_start_cutoff_frame:
+                mdf.loc[idx, 'observed_since_start'] = True
+            else:
+                mdf.loc[idx, 'observed_since_start'] = False            
             mdf.loc[idx, 'bud_roi_set_path'] = bud_roi_set_path
             mdf.loc[idx, 'rls'] = rls
             mdf.loc[idx, 'dist_from_sen'] = dist_from_sen
@@ -454,7 +473,7 @@ def annotate_buds(mdf, buds_mdf, return_bud_roi_df=False, daughters=False):
             mdf.loc[idx, 'first_bud_frame'] = first_bud_roi_pos - 1
             bud_roi_df.loc[:, 'cell_index'] = cell_index
             bud_dfs.append(bud_roi_df)
-
+            
             print(f"Final dist from sen={mdf.loc[idx, 'dist_from_sen']}")
         else:
             print(f'No bud roi set found at:\n{bud_roi_set_path}')
@@ -583,6 +602,8 @@ def create_and_annotate_mdf(exptname, compartmentname,
         if 'rel' in col:
             mdf.loc[:, col] = [utilities.get_relpath(val) for val in mdf[col].values]
     if add_buds_to_mdf:
+        print(f'{len(mdf)} cells in mdf')
+        print(f'{len(bud_mdf)} cells in buds_mdf')
         mdf = annotate_buds(mdf, bud_mdf, daughters=daughters)
     else:
         print(f'Not annotating budding events on master index')

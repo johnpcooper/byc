@@ -258,8 +258,10 @@ def get_byc_fits_df(**kwargs):
         compartment_name = Path(allfitsdf_paths[i]).parents[0].name
         df.loc[:, compartment_name_var] = compartment_name
 
-
+    # Table of one row per decay measurement
     fits_df = pd.concat(fits_tables, ignore_index=True)
+    # Table of one row per timepoint in decay measurement
+    # trace for each decay measurement
     allfitsdf = pd.concat(allfitsdfs, ignore_index=True)
     # Drop rows without a compartment_name
     fits_df = fits_df.dropna(axis=0, subset=[compartment_name_var])
@@ -394,9 +396,19 @@ def set_cell_serial(df):
         
     return df
 
-def set_bud_id(df, include_compartment=True):
+def set_bud_id(df, include_compartment=True, return_df=False, prefix=''):
     """
-    
+    Add a column to <df> that allows identification of individual unique cells
+    in the database
+
+    Some cells have had their substrate decay rate measured twice, and so they 
+    exist as e.g. cell100 and cell101 in terms of cell_index of the crop and bud
+    ROIs. However, they are the same cell and can be identified as such by
+    the unique set of frames at which buds appeared in their bud_roi_set .zip
+    file. bud_id is each of these bud frames concatenated on '-', optionally 
+    including compartment_name
+
+    Return nothing as <df> is modified inplace
     """
     df.loc[:, 'bud_id'] = np.nan
     df.loc[:, 'compartment-bud_id'] = np.nan
@@ -418,7 +430,7 @@ def set_bud_id(df, include_compartment=True):
                 bud_roi_serial = '-'.join([str(val) for val in bud_roi_df.position.values - 1])
 
                 if include_compartment:
-                    df.loc[idx, 'compartment-bud_id'] = f'{comp_name}-{bud_roi_serial}'
+                    df.loc[idx, 'compartment-bud_id'] = f'{comp_name}-{prefix}{bud_roi_serial}'
                 df.loc[idx, 'bud_id'] = bud_roi_serial
             else:
                 df.loc[idx, 'compartment-bud_id'] = np.nan
@@ -426,7 +438,8 @@ def set_bud_id(df, include_compartment=True):
         else:
                 df.loc[idx, 'compartment-bud_id'] = np.nan
                 df.loc[idx, 'bud_id'] = np.nan
-    return df
+    if return_df:
+        return df
 
 class BudDataBase():
     """

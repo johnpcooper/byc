@@ -81,7 +81,7 @@ def figure(**kwargs):
     return fig
 
 def figure_ax(**kwargs):
-    figsize = kwargs.get('figsize', (2.5, 2.5))
+    figsize = kwargs.get('figsize', (2, 2))
     height_scale = kwargs.get('height_scale', 1)
     width_scale = kwargs.get('width_scale', 1)
     dpi = kwargs.get('dpi', 250)
@@ -160,22 +160,18 @@ def format_ticks(ax, **kwargs):
     add_minor_x = kwargs.get('add_minor_x', True)
     add_minor_y = kwargs.get('add_minor_y', True)
     tickdirection = kwargs.get('tickdirection', 'in')      
-    # Default to minor tick every 1/5 of space between
-    # major ticks
-    try:
-        xmajorspace = np.diff(ax.get_xticks())[0]
-    except:
-        xmajorspace = np.nan
-    ymajorspace = np.diff(ax.get_yticks())[0]
-    xminorspace = np.abs(xmajorspace/2)
-    yminorspace = np.abs(ymajorspace/2)
-
-    yminorspace = kwargs.get('yminorspace', yminorspace)
-    xminorspace = kwargs.get('xminorspace', xminorspace)
+    # Default to minor tick every 1/2 of space between
+    # major ticks    
 
     if add_minor_x:
+        xmajorspace = np.diff(ax.get_xticks())[0]        
+        xminorspace = np.abs(xmajorspace/2)
+        xminorspace = kwargs.get('xminorspace', xminorspace)
         ax.xaxis.set_minor_locator(MultipleLocator(xminorspace))
     if add_minor_y:
+        ymajorspace = np.diff(ax.get_yticks())[0]
+        yminorspace = np.abs(ymajorspace/2)
+        yminorspace = kwargs.get('yminorspace', yminorspace)
         ax.yaxis.set_minor_locator(MultipleLocator(yminorspace))
 
     for ticktype in ['minor', 'major']:
@@ -1002,7 +998,16 @@ def filename_from_kwargs(kwargs_dict, ext='.png'):
     seaborn plotting method e.g. sns.lineplot(**kwargs)),
     create a filename for the plot and return it
     """
-    excluded_kws = ['data', 'estimator', 'hue_order', 'palette', 'ax', 'hue_order', 'order']
+    excluded_kws = [
+        'data',
+        'estimator',
+        'hue_order',
+        'palette',
+        'ax',
+        'hue_order',
+        'order',
+        'line_kws',
+        'scatter_kws']
     filename = '_'.join([f'{key}={val}' for key, val in kwargs_dict.items() if key not in excluded_kws])
     filename = f'{filename}{ext}'
     return filename
@@ -1041,16 +1046,23 @@ def plot_dist_from_sen_palette_key(
         max_dist_from_sen=20,
         major_tick_space=5,
         minor_tick_space=1,
-        ext='.svg'
+        alpha=1,
+        colors=None,
+        ext='.svg',
+        xlabel='Buds before death',
+        direction= 'declining'
     ):
-
-    colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+    if colors:
+        print('Using user defined colors list')
+    else:
+        if direction == 'declining':
+            colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+        elif direction == 'ascending':
+            colors = sns.color_palette('viridis', max_dist_from_sen+1)
     colors_list = [c for c in colors]
-
     # Plot the continuous legend
     fig, ax = figure_ax(height_scale=0.2, width_scale=0.75)
     fig.set_dpi(300)
-    alpha = 0.8
     x1 = np.arange(0, max_dist_from_sen, 1)
     y = np.full(len(x1), 1)
     colors_list_alpha = [matplotlib.colors.to_rgba(c, alpha) for c in colors_list]
@@ -1059,15 +1071,19 @@ def plot_dist_from_sen_palette_key(
         y = np.full(len(x), 0.5)
         ax.fill_between(x, y, color=color, edgecolor=None)
 
-    ax.set_ylim(0, 1)
-    ax.set_xlim( max_dist_from_sen + 0.5, -0.5)
     xticks = list(np.arange(0, max_dist_from_sen + 0.5, major_tick_space))
-    xticks.reverse()
+    ax.set_ylim(0, 1)
+    if direction == 'declining':
+        ax.set_xlim( max_dist_from_sen + 0.5, -0.5)
+        xticks.reverse()
+    else:
+        ax.set_xlim(-0.5, max_dist_from_sen+0.5)
+    
     ax.set_xticks(xticks)
     ax.spines['left'].set_visible(False)
     ax.yaxis.set_visible(False)
     format_ticks(ax, tickdirection='out', xminorspace=minor_tick_space)
-    ax.set_xlabel("Buds before death")
+    ax.set_xlabel(xlabel)
 
     filetype = ext
     savepath = os.path.join(os.getcwd(), f'plots\\gen_from_death_color_palette_max_dist_from_sen={max_dist_from_sen}{filetype}')
@@ -1075,6 +1091,22 @@ def plot_dist_from_sen_palette_key(
     plt.tight_layout()
     fig.savefig(savepath)
     print(f'Saved figure at\n{savepath}')
+
+def get_gene_deletion_string(genename: str):
+    """
+    Return string for italicized <genename>  + 
+    lower case delta symbol
+    """
+    base_str = r'$\it{gene}$$\Delta$'
+    new_str = base_str.replace('gene', genename)
+    return new_str
+
+transparent_boxes_prop_dict = {
+    'boxprops': {'facecolor': 'white', 'edgecolor': 'black', 'linewidth': 1},
+    'medianprops': {'color': 'black', 'linewidth': 1},
+    'whiskerprops': {'color': 'black', 'linewidth': 1},
+    'capprops': {'color': 'black', 'linewidth': 1}
+}
 
 strains_color_dict = {
     'JPC000': (255/255, 102/255, 71/255),
@@ -1095,6 +1127,7 @@ strains_color_dict = {
     'JPC193': (106/255, 0/255, 128/255),
     'JPC196': (237/255, 132/255, 223/255),
     'JPC199': (237/255, 132/255, 223/255),
+    'JPC258_r': (255/255, 0/255, 255/255)
 }
 
 other_colors = {

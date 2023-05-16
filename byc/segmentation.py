@@ -1483,21 +1483,27 @@ def cell_tracedf_from_outline_df(
         outline_df,
         crop_stack_path
     )
-    # Columns to be used to aggregate the outline-vertices df
-    # by frame. Includes source_xy_bf_stack_path because string
-    # values get thrown out if not in the index
+    # Save some information before the outline-vertices df gets aggregated
+    # dropping string columns
+    cell_mask_stack_path = outline_df.loc[0, 'cell_mask_stack_path']
+    source_xy_bf_stack_path = outline_df.loc[0, 'source_xy_bf_stack_path']
+    outline_df.to_csv('C:/Users/johnp/Downloads/outline.csv', index=False)
+    # Only aggregating by frame because it's a little complex now 
     aggdex = [
-        'source_xy_bf_stack_path',
-        'frame',
-        'cell_index',
-        'cell_mask_stack_path'
+        'frame'
     ]
+    # Only including non-string columns to be aggregated because Pandas
+    # can no longer figure out what to when taking the median of a 
+    # column of strings. It used to just give NaN or drop the column which
+    # was fine, but now we get a value error
     cols = [col for col in outline_df.columns if outline_df[col].dtype != 'O']
-    outline_df_table = outline_df.loc[:, cols].pivot_table(index=aggdex, aggfunc=np.median).reset_index()
     # Aggregate the outline_df used above to create masks down to
     # one row per frame
+    outline_df_table = outline_df.loc[:, cols].pivot_table(index=aggdex, aggfunc=np.median).reset_index()
     outline_df_table.loc[:, crop_path_colname] = crop_stack_path
     outline_df_table.loc[:, 'frame_number'] = outline_df_table.frame
+    outline_df_table.loc[:, 'cell_mask_stack_path'] = cell_mask_stack_path
+    outline_df_table.loc[:, 'source_xy_bf_stack_path'] = source_xy_bf_stack_path
     # Label with all cell features found in the master index df
     for col in mdf.columns:
         if col not in outline_df_table.columns:

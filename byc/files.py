@@ -309,7 +309,8 @@ def get_channel_names(sampledir):
                  'RFP': 'rfp',
                  'GFP': 'gfp',
                  'mKO': 'mko',
-                 'BFP': 'bfp'}
+                 'BFP': 'bfp',
+                 'E2C': 'e2c'}
     fluor_channel_names = []
     channel_names = []
     raw_channel_names = []
@@ -336,7 +337,7 @@ def make_ss_mdf(exptname, **kwargs):
     exptdir = os.path.join(constants.steady_state_data_dir, exptname)
     datadir = f'{exptdir}/data'
     if os.path.exists(datadir):
-        print(f'Found dataset directory at \n{datadir}')
+        print(f'Found dataset directory at \n{os.path.abspath(datadir)}')
     else:
         print(f'No such file exists\n{datadir}')
         
@@ -410,6 +411,7 @@ def make_ss_mdf(exptname, **kwargs):
         date = m.group()
         savepath = os.path.join(exptdir, f'{date}_master_index.csv')
         mdf.to_csv(savepath, index=False)
+        print(f'Saved master index df at\n{os.path.abspath(savepath)}')
     if return_mdf:
         return mdf
 
