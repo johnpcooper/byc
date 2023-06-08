@@ -62,11 +62,22 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                 if ('measdirname' in info.keys() and 'path' in info.keys()):
                     print('Found updated format data')
                     measdirname = info.measdirname
-                    if measdirname[-2:] == '_1':
+                    possible_suffs = [f'_{num}' for num in [1, 2, 3, 4, 5]]
+                    print(f'Reading from measdirname:\n{measdirname}')
+                    # micromanager typically adds a _1 string to the end 
+                    # of your base filename in multi-dimensional acquisition
+                    # even if it's the first file with that filename. If it
+                    # is the second file with that same basefilename micromanager
+                    # adds a 2, 3...
+                    if measdirname[-2:] in possible_suffs:
                         basefilename = measdirname[0:-2]
+                    else:
+                        basefilename = measdirname
                     filename = f'{basefilename}_{str(fov).zfill(3)}_{channel_name}.csv'
                     filepath = os.path.join(info.path, filename)
                     print(f'Looking for data at {filepath}')
+                    if os.path.exists(filepath):
+                        print(f'Found file at path above')
                 else:
                     print('Found older format master index')
                     # For master indexes created with an older version of files.make_ss_mdf()
@@ -87,18 +98,6 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                     channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
                     channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
                     channel_dfs.append(channel_df)
-                else:
-                    filepath = filepath.replace(f'_{pharm_descriptor}', '')
-                    filepath = filepath.replace('_clone', '_C')
-                    print(f'Looking for data with alternate naming at \n{filepath}')
-                    if os.path.exists(filepath):
-                        print(f"Found data at {filepath}")
-                        channel_df = pd.read_csv(filepath)
-                        channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
-                        channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
-                        channel_dfs.append(channel_df)
-                    else:
-                        print("No data found")
                     
             if len(channel_dfs) > 0:
                 fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
