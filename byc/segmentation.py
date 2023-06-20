@@ -1,4 +1,5 @@
 import os
+import re
 
 import tifffile as tf
 import tkinter as tk
@@ -612,8 +613,8 @@ def cropped_stack_from_cellroidf(cellroidf, source_stack=None, **kwargs):
     for frame_idx in cellroidf.frame:
         frame = source_stack[int(frame_idx)]
         # 
-        x_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'x_center'])
-        y_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'y_center'])
+        x_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'x_center'].iloc[0])
+        y_center = int(cellroidf.loc[cellroidf.frame==frame_idx, 'y_center'].iloc[0])
         x_upper = x_center + x_buffer
         x_lower = x_center - x_buffer
         y_upper = y_center + y_buffer
@@ -916,7 +917,7 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     coordinates
     """
     distance_max = kwargs.get('distance_max', 25)
-    distance_min = kwargs.get('distance_min', 2)
+    distance_min = kwargs.get('distance_min', 6)
     theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
     dist_bin_size = kwargs.get('dist_bin_size', 1)
     thetas = np.arange(-np.pi, np.pi, theta_bin_size)
@@ -1478,7 +1479,8 @@ def cell_tracedf_from_outline_df(
     # Create a mask to use to measure the fluorescent channels
     seg_channel = 'bf'
     crop_path_colname = f'{seg_channel}_crop_stack_path'
-    crop_stack_path = mdf.loc[cell_index, crop_path_colname]
+    crop_stack_path = mdf.loc[mdf.cell_index==cell_index, crop_path_colname].iloc[0]
+    print(f'Reading crop stack for cell {cell_index} from\n{crop_stack_path}')
     cell_masks_stack = get_mask_stack_from_outline_vertices(
         outline_df,
         crop_stack_path
@@ -1544,18 +1546,25 @@ def get_cell_trace_dfs_from_outline_vertices(mdf, collection_interval_minutes=10
     """
     compartmentpath = files.get_byc_compartmentdir(mdf.exptname.iloc[0], mdf.compartment_name.iloc[0])
     cell_indices = utilities.get_cell_indices_in_compartment(compartmentpath)
-
+    print(f'Found cell indices in compartment\n{compartmentpath}\n{cell_indices}')
     keyword = 'outline-vertices'
     filenames = [fn for fn in os.listdir(compartmentpath) if keyword in fn]
     filepaths = [os.path.join(compartmentpath, fn) for fn in filenames]
+    # Can't rely on order of filenames in directory to get agreement
+    # between cell_index and i in the outline_dfs list, so make a 
+    # dictionary to enforce correct association
+    pattern = constants.patterns.cell_index
+    cell_indices_keys = [int(re.search(pattern, fp).groups()[1]) for fp in filepaths]
+    
     outline_dfs = [pd.read_csv(path) for path in filepaths]
+    outline_dfs_dict = dict(zip(cell_indices_keys, outline_dfs))
 
     assert len(outline_dfs) == len(cell_indices), 'Missing one or more cell outline-vertices .csvs'
     mdf.loc[:, 'cell_outline_vertices_path'] = filepaths
 
     celltracedfs = []
     for cell_index in cell_indices:
-        outline_df = outline_dfs[cell_index]
+        outline_df = outline_dfs_dict[cell_index]
         celltracedf = cell_tracedf_from_outline_df(
             cell_index,
             outline_df,

@@ -228,7 +228,7 @@ class bycDataSet(object):
             print(f'There are multiple entries for the same cell in the master index')
                 
             return None
-        channel = kwargs.get('channel', 'yfp')
+        channel = kwargs.get('channel', mdf.channels_collected.iloc[0].split()[0])
         col_name = f'{channel}_df_path'
         mdf.loc[:, col_name] = np.nan
         compartmentname = mdf.compartment_name.iloc[0]

@@ -52,15 +52,8 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
             channel_dfs = []
             # Info is a series so what would
             # be 'columns' is keys()
-            if 'tet_concn' in info.keys():
-                pharm_descriptor = str(info.tet_concn).zfill(3)+'uM-Tet'
-            elif 'estradiol_concn' in info.keys():
-                pharm_descriptor = str(info.estradiol_concn).zfill(3)+'nM-Estradiol'
-            else:
-                pharm_descriptor = ''
             for channel_name in channel_names:
                 if ('measdirname' in info.keys() and 'path' in info.keys()):
-                    print('Found updated format data')
                     measdirname = info.measdirname
                     possible_suffs = [f'_{num}' for num in [1, 2, 3, 4, 5]]
                     print(f'Reading from measdirname:\n{measdirname}')
@@ -78,27 +71,17 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                     print(f'Looking for data at {filepath}')
                     if os.path.exists(filepath):
                         print(f'Found file at path above')
+                        channel_df = pd.read_csv(filepath)
+                        channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
+                        channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
+                        channel_dfs.append(channel_df)
+                    else:
+                        if len(channel_dfs)>2:
+                            pass
+                        else:
+                            print(f'No file found')
                 else:
-                    print('Found older format master index')
-                    # For master indexes created with an older version of files.make_ss_mdf()
-                    condition_descriptors = [info.expt_date,
-                                             info.plasmid,
-                                             info.genotype,
-                                             pharm_descriptor,
-                                             'clone' + str(info.clone),
-                                             str(fov).zfill(3),
-                                             channel_name]
-                    filename = '_'.join(str(desc) for desc in condition_descriptors) + '.csv'
-                    filepath = os.path.join(info.path, filename)
-                    print(f'Looking for data at {filepath}')
-                
-                if os.path.exists(filepath):
-                    print(f"Found data at {filepath}")
-                    channel_df = pd.read_csv(filepath)
-                    channel_df = channel_df.rename(columns={'Mean': str(f'{channel_name}_mean'), ' ': 'cell_index'})
-                    channel_df = channel_df.rename(columns={'RawIntDen': str(f'{channel_name}_int'), ' ': 'cell_index'})
-                    channel_dfs.append(channel_df)
-                    
+                    print(f'No measdirname column in master index')                    
             if len(channel_dfs) > 0:
                 fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
                 fov_dfs_list.append(fov_merged_df)

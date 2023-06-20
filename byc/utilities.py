@@ -260,31 +260,7 @@ def annotate_bud_and_crop_paths_in_mdf(mdf, **kwargs):
     compdir = mdf.loc[0, 'compartment_dir']
     exptname = mdf.loc[0, 'exptname']
 
-    cell_indices_strs = [val.zfill(3) for val in mdf.index.astype(str)]
-
-    # Set bud roi path location information
-    bud_roi_fns = [f'{exptname}_cell{cell_index_str}_bud_rois.zip' for cell_index_str in cell_indices_strs]
-    bud_roi_paths = [os.path.join(compdir, fn) for fn in bud_roi_fns]
-    bud_roi_relpaths = [get_relpath(path) for path in bud_roi_paths]
-    mdf.loc[:, 'bud_roi_set_path'] = bud_roi_paths
-    mdf.loc[:, 'bud_roi_set_relpath'] = bud_roi_relpaths
-    # Set crop roi path location information
-    crop_roi_fns = [f'{exptname}_cell{cell_index_str}_crop_rois.zip' for cell_index_str in cell_indices_strs]
-    crop_roi_paths = [os.path.join(compdir, fn) for fn in crop_roi_fns]
-    crop_roi_relpaths = [get_relpath(path) for path in crop_roi_paths]
-    mdf.loc[:, 'crop_roi_set_path'] = crop_roi_paths
-    mdf.loc[:, 'crop_roi_set_relpath'] = crop_roi_relpaths
-
-def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
-    """
-    bud and crop df .csvs contain information entered during data annotation
-    and roi .zip file saving using imagejpc
-    """
-
-    compdir = mdf.loc[0, 'compartment_dir']
-    exptname = mdf.loc[0, 'exptname']
-
-    cell_indices_strs = [val.zfill(3) for val in mdf.index.astype(str)]
+    cell_indices_strs = [val.zfill(3) for val in mdf.cell_index.astype(str)]
 
     # Set bud roi path location information
     bud_roi_fns = [f'{exptname}_cell{cell_index_str}_bud_rois.zip' for cell_index_str in cell_indices_strs]
@@ -322,9 +298,11 @@ def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
 
     crop_rois_dfs = [pd.read_csv(path) for path in crop_rois_df_paths]
     bud_rois_dfs = [pd.read_csv(path) for path in bud_rois_df_paths]
-
-    crop_rois_alldf = pd.concat(crop_rois_dfs).reset_index()
-    bud_rois_alldf = pd.concat(bud_rois_dfs).reset_index()
+    # If xy FOVs were analyzed out of order, then we can't rely on 
+    # files to be sorted and concatenated in cell_index order as
+    # is the case with the mdf
+    crop_rois_alldf = pd.concat(crop_rois_dfs).sort_values(by='cell_index', ascending=True).reset_index()
+    bud_rois_alldf = pd.concat(bud_rois_dfs).sort_values(by='cell_index', ascending=True).reset_index()
     # End event type is only accurately annotated in the
     # bud_rois_df so don't annotate it here
     for col in crop_rois_alldf.columns:
@@ -377,11 +355,15 @@ def generate_mdf(exptname, compartmentname, **kwargs):
     mdf.loc[:, 'compartment_name'] = mdf.compartment_dir.apply(lambda x: os.path.basename(x))
     mdf.loc[:, 'exptname'] = exptname
     mdf.set_index('cell_index', inplace=True)
+    # The index "cell_index" is correct but if xy FOV stacks
+    # were analyzed out of order the "cell_index" column will not be.
+    # Fix it here
+    mdf.loc[:, 'cell_index'] = mdf.index
     annotate_bud_and_crop_paths_in_mdf(mdf)
     annotate_bud_and_crop_df_info_in_mdf(mdf)
     print(f'Adding paths for channels {channels}')
-    files.add_cell_channel_crop_stack_paths(mdf, channels=channels)
     files.add_cell_channel_xy_source_stack_paths(mdf, channels=channels)
+    files.add_cell_channel_crop_stack_paths(mdf, channels=channels)
 
     return mdf
 
