@@ -75,7 +75,7 @@ cd C:\
 # Activate .byc env if not already active
 .\byc\.byc\Scripts\activate
 # Run the alignment script and follow prompts
-python .\byc\bin\run_alignment.py
+python .\byc\bin\align_byc_expt.py
 ```
 
 ### Linux
@@ -84,22 +84,8 @@ python .\byc\bin\run_alignment.py
 cd ~
 cd byc
 source .byc_env/bin/activate
-python bin/run_alignment
+python bin/align_byc_expt.py
 ```
-
-Python will then ask how you want to name channels in the experiment (should be the same for linux and windows):
-
-```sh
-# Python will prompt you to name channels in the terminal.
-# Enter names as shown below
-Detected 3 channels
-Enter names below:
-Name for channel 0: bf
-Name for channel 1: dsred
-Name for channel 2: yfp
-```
-
-Once run_alignment is finished running, the aligned stacks for each channel will be saved in the output folder selected in the file dialogs above.
 
 ## Data processing and analysis wikis
 
