@@ -26,7 +26,12 @@ class bycImageSet(object):
         self.output_dir_path = self.output_dir_path(self.input_dir_path)
         self.fov_dir_paths_dict = self.fov_dir_paths_dict(self.input_dir_path)
         self.display_and_comments = files.get_byc_display_and_comments_dict(self.input_dir_path)
-        self.channel_names = [channel['Name'] for channel in self.display_and_comments['Channels']]
+        # Shape of the display and comments dictionary varies depending on whether the data were
+        # output from micro-manager 1 or 2
+        if 'Channels' in self.display_and_comments.keys():
+            self.channel_names = [channel['Name'] for channel in self.display_and_comments['Channels']]
+        else: # The micro-manager 2 paradigm
+             self.channel_names = self.display_and_comments['Summary']['ChNames']
         
     def output_dir_path(self, input_dir_path):
         """
@@ -72,8 +77,15 @@ class bycImageSet(object):
         tiffiles = [fn for fn in allfiles if '.tif' in fn]
         
         fov_channels_dict = {}
-        for channel in self.channel_names:
+        for channelindex, channel in enumerate(self.channel_names):
             channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if channel in fn]
+            if len(channel_paths) == 0:
+                # In micro-manager 2, files are saved with the index of their channel,
+                # not the channel name itself. The order of the channels in self.channel_names
+                # matches their index in the metadata
+                numberpattern = str(channelindex).zfill(3)
+                channelpattern = f'(channel)({numberpattern})'
+                channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if re.search(channelpattern, fn)]
             # Files don't get listed in order on unix based OS so 
             # we need to sort so that frames get read in in order
             channel_paths.sort()
@@ -254,10 +266,10 @@ def align_byc_expt(**kwargs):
     """
     input_path = kwargs.get('input_path', None)
     write_output = kwargs.get('write_output', True)
-    save_unaligned = kwargs.get('save_unaligned', False)
+    save_unaligned = kwargs.get('save_unaligned', True)
 
     if input_path != None and os.path.exists(input_path):
-        byc_image_set = bycImageSet(input_path)
+        byc_image_set = bycImageSet(input_dir_path=input_path)
     else:
         # Lack of input path arg to bycImageSet()
         # will prompt the user to select one

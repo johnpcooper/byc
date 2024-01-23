@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -325,12 +326,15 @@ def get_channel_names(sampledir):
             
     return ' '.join(fluor_channel_names), ' '.join(channel_names), ' '.join(raw_channel_names)
 
-def make_ss_mdf(exptname, **kwargs):
+def make_ss_mdf(exptname, sample_file_type='dir', **kwargs):
     """
     Create and save master index made by scanning the directory
     matching `exptname` in constants.steady_state_data_dir
     and looking for features in those micromanager output
     directories defined in patterns
+
+    You can also set 'sample_file_type' to 'tif' if you want to make
+    a master index for data that is already converted to .tif files
     """
     return_mdf = kwargs.get('return_mdf', True)
     save_mdf = kwargs.get('save_mdf', True)
@@ -344,7 +348,10 @@ def make_ss_mdf(exptname, **kwargs):
     samplenames = os.listdir(datadir)
     # Filter non-directory items
     sampledirs = [os.path.join(datadir, name) for name in samplenames]
-    sampledirs = [d for d in sampledirs if os.path.isdir(d)]
+    if sample_file_type == 'dir':
+        sampledirs = [d for d in sampledirs if os.path.isdir(d)]
+    elif sample_file_type == 'tif':
+        sampledirs = [d for d in sampledirs if d[-4:]=='.tif']
     # Extract features from sample names
 
     patterns = [constants.patterns.date,
@@ -376,7 +383,10 @@ def make_ss_mdf(exptname, **kwargs):
     # from filename and add those features to the master index
     for i, sampledir in enumerate(sampledirs):
         # Add imaging channels collected to master index
-        fluorchannels, channels, rawchannels = get_channel_names(sampledir)
+        if sample_file_type == 'dir':
+            fluorchannels, channels, rawchannels = get_channel_names(sampledir)
+        else:
+            fluorchannels, channels, rawchannels = 'yfp rfp', 'bf yfp rfp', 'Brightfield YFP RFP'
         for idx, val in enumerate([fluorchannels, channels, rawchannels]):
             mdf.loc[i, channelkeys[idx]] = val
         samplename = os.path.basename(sampledir)
@@ -567,9 +577,24 @@ def get_byc_display_and_comments_dict(expt_dir):
     file found in expt_dir
     """
     filepath = os.path.join(expt_dir, 'display_and_comments.txt')
-    with open(filepath, 'r') as file:
-        contents = file.read()
-        dictionary = ast.literal_eval(contents)
+    dictionary = None
+    # This is the micro-manager 2.0 paradigm of separate file
+    # output
+    if not os.path.exists(filepath):
+        # This is the micro-manager 2.0 paradigm of separate file
+        # output
+        filepath = os.path.join(expt_dir, 'Pos0\\metadata.txt')
+        if os.path.exists(filepath):
+            with open(filepath) as file:
+                contents = file.read()
+                dictionary = json.loads(contents)
+        else:
+            print(f'No file exists at\n{filepath}')
+            return None
+    else:
+        with open(filepath, 'r') as file:
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)            
 
     return dictionary
             
@@ -838,3 +863,16 @@ def get_allfitsdf_paths(**kwargs):
     df_paths = [p for p in df_paths if os.path.exists(p)]
     
     return df_paths
+
+
+
+def abspath_from_relpath(relpath: str):
+    """
+    All "rel" or "relative" paths and directories
+    are relative to constants.byc_data_dir which is
+    defined as the directory "data" under your byc package
+    installation.     
+    """
+    abspath = os.path.join(constants.byc_data_dir, relpath)
+    abspath = os.path.abspath(abspath)
+    return abspath
