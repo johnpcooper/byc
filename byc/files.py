@@ -280,24 +280,34 @@ def rename_channels(fov_path, channels_dict, base_filename, exptdir):
     channels = [path for path in os.listdir(fov_path) if '.tif' in path]
     fov = fov_path[fov_path.rindex('Pos') + len('Pos'):]
     found_channels = []
-    for fov_channel_filename in channels:
-        
+    # This works if data were output from micro-manager 1
+    for fov_channel_filename in channels:        
         for key in channels_dict.keys():
-
             if channels_dict[key] in fov_channel_filename:
-
                 src = os.path.join(fov_path, fov_channel_filename)
                 dst = os.path.join(exptdir, f'{base_filename}_{fov.zfill(3)}_{key}.tif')
                 shutil.copyfile(src, dst)
-
                 found_channels.append(key)
-    
     # Check if we found a file for every channel dictated in the master_index
     if len(found_channels) == len(channels_dict):
         pass
     else:
-        print(f"Couldn't find a file for every channel in:\n{channels_dict.keys}. Only found files for the following: {found_channels}")
+        found_channels = []
+        # print(f"Looking for micro-manager 2 output")
+        # this works if data were output from micro-manager 2
+        for fov_channel_filename in channels:
+            for channel_index, key in enumerate(channels_dict.keys()):
+                channelpattern = f'channel{str(channel_index).zfill(3)}'
+                if channelpattern in fov_channel_filename:
+                    src = os.path.join(fov_path, fov_channel_filename)
+                    dst = os.path.join(exptdir, f'{base_filename}_{fov.zfill(3)}_{key}.tif')
+                    shutil.copyfile(src, dst)
+                    found_channels.append(key)
 
+    if len(found_channels)==len(channels_dict):
+        pass
+    else:
+        print(f"Couldn't find a file for every channel in:\n{channels_dict.keys()}. Only found files for the following: {found_channels}")
 
 def get_channel_names(sampledir):
     """
@@ -315,14 +325,25 @@ def get_channel_names(sampledir):
     fluor_channel_names = []
     channel_names = []
     raw_channel_names = []
-    channeldictslist = metadict['Channels']
-    for channeldict in channeldictslist:
-        raw_name = channeldict['Name']
-        name = namesdict[raw_name]
-        raw_channel_names.append(raw_name)
-        channel_names.append(name)
-        if name != 'bf':
-            fluor_channel_names.append(name)
+    # If data were output from micro-manager 1
+    if 'Channels' in metadict.keys():
+        channeldictslist = metadict['Channels']
+        for channeldict in channeldictslist:
+            raw_name = channeldict['Name']
+            name = namesdict[raw_name]
+            raw_channel_names.append(raw_name)
+            channel_names.append(name)
+            if name != 'bf':
+                fluor_channel_names.append(name)
+    # If the data were output from micro-manager 2
+    else:
+        channels = metadict['Summary']['ChNames']
+        for raw_name in channels:
+            raw_channel_names.append(raw_name)
+            name = namesdict[raw_name]
+            channel_names.append(name)
+            if name != 'bf':
+                fluor_channel_names.append(name)
             
     return ' '.join(fluor_channel_names), ' '.join(channel_names), ' '.join(raw_channel_names)
 
