@@ -148,3 +148,7 @@
 ### 4. Segment cells and measure fluorescence using annotation data created above
 
 This step is executed in the jupyter notebook at [byc/notebooks/BYC_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/BYC_pipeline.ipynb). This  notebook details the above installation steps and executes cell segmentation, curve fitting to fluorescence measurements, and writing of aggregated single cell data (fluorescence and bud timing) to .csv files.
+
+## Segmenting and analyzing cover slip imaging data
+
+Use `byc` and `imagejpc` to image steady state imaging of cells imaged on a coverslip (not in the BYC device). The [byc/notebooks/Steady_state_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/Steady_state_pipeline.ipynb) documents how to install Fiji plugins from `imagejpc` and use them to segment and measure fluorescence in indivudual cells. The notebook then executes steps to read in the data and analyze it.
