@@ -27,15 +27,14 @@ source_path = source_path()
 
 database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_database.csv'),
                   'cell_roi_db_path': os.path.join(package_path, 'cell_roi_database.json')}
-
+# Define data loacations for various types of experiments. Note the ones
+# that need to be fully hardcoded - steady_state_data_dir, steady_state_rep_image_dir,
+# and flow_data_dir
 byc_data_dir = os.path.join(source_path, 'data/')
-byc_data_dir = 'C:/Users/johnp/Box/Projects/byc/data/'
 compartment_index_path = os.path.join(byc_data_dir, 'meta/compartments_index.csv')
-legacy_byc_data_dir = "C:\\Users\\John Cooper\\Projects\\byc_data\\"
-steady_state_data_dir = "C:\\Users\\johnp\\Box\\Finkelstein-Matouschek\\images\\"
-steady_state_data_path = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\data.csv"
-steady_state_rep_image_dir  = r"C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\representative_images"
-flow_data_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/flow_cytometry"
+steady_state_data_dir = "C:/Users/johnp/Box/Finkelstein-Matouschek/images/"
+steady_state_rep_image_dir  = os.path.join(source_path, 'notebooks')
+flow_data_dir = "C:/Users/johnp/Box/Finkelstein-Matouschek/flow_cytometry"
 plots_dir = os.path.join(source_path, 'data/meta/plots')
 
 master_index_cols = ['date',
@@ -175,7 +174,8 @@ class Patterns(object):
                      'CMY3465',
                      'rpn4d',
                      'ubr2d',
-                     'BY4742']
+                     'BY4742',
+                     'pdr5d']
         genotypes = '|'.join(genotypes)
         pattern  = f'({genotypes})'
         return pattern
@@ -218,6 +218,7 @@ class Patterns(object):
         """
         numbers = '|'.join([str(num) for num in range(1,20)])
         pattern = f"(clone)({numbers})"
+        pattern = f"(C)({numbers})"
         return pattern
 
     def get_crop_roi_df_file(self):
@@ -325,3 +326,66 @@ col_names = ['background',
              'clone_number']
 
 patterns_dict = dict(zip(col_names, patterns_list))
+
+# Documentation of final replicates used for manuscript etc.
+compartments_dict = {
+    'wt_rkk': [
+        '20221019_byc_JPC228_UBL-YFP-Su9_full',
+        '20221028_byc_JPC228_DsRed-P2A-UBL-YFP-Su9_3x-int',
+        '20221104_byc_JPC220_R-YFP-Su9_Hsp104-mCherry',
+        '20221118_byc_JPC220_R-YFP-Su9_Hsp104-mCherry',
+        '20221201_byc_JPC220_R-YFP-Su9_HSP104-mCherry'
+    ],
+    'wt_ubl': [
+        '20230126_byc_JPC228_DsRed-P2A-UBL-YFP-Su9_BY4741',
+        '20230201_byc_JPC228-20230127-int_UBL-YFP-Su9x3_BY4741'
+    ],
+    'wt_odc': [
+        '20220610_byc_JPC122_-YFP-ODC_two-chase',
+        '20220616_byc_JPC122_YFP-ODC_BY4741_two-chase',
+        '20220211_byc_JPC122_YFP-ODC(47)_BY4741',
+        '20220825_byc_JPC122_two-chase_1000xetOH',
+        '20221028_byc_JPC122_YFP-ODC_x3-int',
+        '20221201_byc_JPC122_YFP-ODC'
+    ],
+    'mub1_rkk': [
+        '20230822_byc_JPC274_R-YFP-Su9_in_mub1d',
+        '20230518_byc_JPC274_R-YFP-Su9_mub1d',
+        '20230810_byc_JPC274_R-YFP-Su9_mub1d'
+    ],
+    'ubr2_rkk': [
+        '20230810_byc_JPC262_R-YFP-Su9_ubr2d',
+        '20230714_byc_JPC262_R-YFP-Su9_ubr2d',
+        '20230822_byc_JPC262_R-YFP-Su9_in_ubr2d'
+    ],   
+    'ubr2_ubl': [
+        '20230518_byc_JPC259_DsRed-P2A-UBL-YFP-Su9_ubr2d'
+    ],
+    'rpn4_rkk': [
+        '20230303_byc_JPC263_R-YFP-Su9_rpn4d',
+        '20230609_byc_JPC277_R-YFP-Su9_in_rpn4d_cue5d'
+    ],
+    'rpn4_odc': [
+        '20230224_byc_JPC261_YFP-ODC_rpn4d'
+    ],
+    'rpn4_ubl': [
+        '20230201_byc_JPC226-20230127-int_UBL-YFP-Su9x3_rpn4d'
+    ],
+    'wt_dsred': [
+        '20230201_byc_JPC228-20230127-int_UBL-YFP-Su9x3_BY4741_rfp'
+    ],
+    'hsp104OE_rkk': [
+        '20220915_byc_JPC193_R-YFP-Su9_HSP104-OE',
+        '20221215_byc_JPC193_R-YFP-Su9_HSP104-OE'
+    ],
+    'ssa1OE_rkk': [
+        '20221104_byc_JPC199_R-YFP-Su9_SSA1-OE'
+    ],
+    'ssa2OE_rkk': [
+        '20220610_byc_JPC196_SSA2-OE_in_JPC121_R-YFP-Su9_two-chase'
+    ],
+    'ubr1OE_rkk': [
+        '20220118_byc_JPC136_pJC359_Ubr1_OE_w_pJC495',
+        '20230324_byc_JPC136_R-YFP-Su9_Ubr1-OE'
+    ]
+}
