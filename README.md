@@ -40,19 +40,38 @@
     # of environments accessible in ipykernels ( like jupyter
     # notebooks)
     python -m ipykernel install --user --name=.byc
-    # Install the byc library in your currently active 
+    # Install the byc package in your currently active 
     # .byc environment using pip
     cd c/Users/usrname/Projects/byc
     pip install .
-    # Or install the byc using virtual environment wrapper
+    # Or install the byc package using virtual environment wrapper
+    # Using virtualenvwrapper means to "install" byc means that python
+    # will look in your project directory when importing byc. If you make
+    # changes to byc in the project directory then you don't have to reinstall
+    # byc for those changes to show up when you import byc again from a fresh
+    # python kernel.
+    #
+    # Also importantly, this means you can keep your data directory at 
+    # c/Users/usrname/Projects/byc/data instead of keeping it at 
+    # c/Users/usrname/Projects/envs/.byc/lib/python3.10/site-packages/byc/data
+    #
+    # You should only install virtualenvwrapper in your base environment
+    # If .byc is activated, deactivate it and then install virtualenvwrapper
+    # with pip
+    deactivate
     pip install virtualenvwrapper-win # windows
     pip install virtualenvwrapper # macOS/linux
     # Before running virtualenvwrapper CLI tools in your unix system,
-    # you'll need to add some paths to your .bash_profile/.bashrc
-    # See the docs here: https://virtualenvwrapper.readthedocs.io/en/latest/install.html
-    # Add the byc source directory to the list of source paths
-    # virtualenvwrapper will look for packages to import
-    add2virtualenv .
+    # you'll need to add some environment variables to your .bash_profile/.bashrc
+    # as directed in the docs here: https://virtualenvwrapper.readthedocs.io/en/latest/install.html
+    #
+    # Now you can use virutalenvwrapper to "install" the byc package
+    # to your .byc environment. This adds the byc source directory
+    # to the list of source directories where .byc python will look for 
+    # packages to import
+    source c/Users/usrname/Projects/envs/.byc/bin/activate # activate the byc environment
+    cd c/Users/usrname/Projects/byc # navigate to the byc package source directory
+    add2virtualenv . # add the source directory to list of places .byc python looks to import packages
     ```
 
 ### 2. Install and configure `imagejpc`
