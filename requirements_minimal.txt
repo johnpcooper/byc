@@ -20,4 +20,4 @@ virtualenvwrapper-win
 opencv-python
 lmfit
 lifelines
-snapgene_reader
+snapgene-reader
