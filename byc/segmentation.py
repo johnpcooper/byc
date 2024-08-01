@@ -24,6 +24,7 @@ from scipy.signal import medfilt, find_peaks
 from pykdtree.kdtree import KDTree
 
 from matplotlib.path import Path
+import matplotlib.pyplot as plt
 
 from read_roi import read_roi_file, read_roi_zip
 
@@ -961,6 +962,7 @@ def polar_intensity_peaks(
     use_first_peak=True,
     use_constant_circle_roi=False,
     default_radius_px=10,
+    peak_dist_offset=3,
     **kwargs
     ):
     """
@@ -976,7 +978,6 @@ def polar_intensity_peaks(
     # peak was found. Helps make sure we're staying
     # inside the cell and not overlapping with other cells
     use_median_filtered_intensity = True
-    peak_dist_offset = kwargs.get('peak_offset', -2)
     peak_height_threshold = kwargs.get('peak_height_threshold', 500)
     medfilt_kern_size = kwargs.get('medfilt_kern_size', 3)
     df = polar_intensity_df
@@ -1020,7 +1021,7 @@ def polar_intensity_peaks(
                     highest_peak_dist = peaks[0][highest_peak_index] + df.peak_dist_offset.iloc[0]
                 first_peak_dist = peaks[0][0] + df.peak_dist_offset.iloc[0]
                 if first_peak_dist <= 1: 
-                    print(f'Found unusable peak radius of {first_peak_dist}, using defaul of {default_radius_px}')
+                    print(f'Found unusable peak radius of {first_peak_dist}, using default of {default_radius_px}')
                     first_peak_dist = default_radius_px
                 # This peak dist offset is a way to arbitrarily scale the 
                 # size of the ROI and ensure we're not getting area outside
@@ -1057,9 +1058,10 @@ def cell_stack_I_by_distance_and_theta(
     cell_index,
     crop_rois_df,
     stacksdict,
-    use_img_inverse=True,
-    use_constant_circle_roi=False,
-    default_radius_px=9
+    use_img_inverse=False,
+    use_constant_circle_roi=True,
+    default_radius_px=9,
+    peak_dist_offset=3
     ):
     if use_img_inverse:
         print('Using inverted image. Usually best when cell edges are dark in original data')
@@ -1094,7 +1096,11 @@ def cell_stack_I_by_distance_and_theta(
             )
         # For each theta bin, find radius distance coordinate
         # for highest magnitude intensity peak
-        df = polar_intensity_peaks(df, use_constant_circle_roi=use_constant_circle_roi, default_radius_px=default_radius_px)
+        df = polar_intensity_peaks(
+            df,
+            use_constant_circle_roi=use_constant_circle_roi,
+            default_radius_px=default_radius_px,
+            peak_dist_offset=peak_dist_offset)
         df.loc[:, 'frame_rel'] = frame_idx
         df.loc[:, 'frame'] = celldf[celldf.frame_rel==frame_idx].frame.iloc[0]
         df.loc[:, 'x_center'] = x_center
@@ -1464,6 +1470,7 @@ def cell_tracedf_from_outline_df(
     cell_index,
     outline_df,
     mdf,
+    save_mask_stack=True,
     **kwargs):
     """
     Using the cell outline vertex coordinates in <outline_df>, which
@@ -1483,13 +1490,13 @@ def cell_tracedf_from_outline_df(
     print(f'Reading crop stack for cell {cell_index} from\n{crop_stack_path}')
     cell_masks_stack = get_mask_stack_from_outline_vertices(
         outline_df,
-        crop_stack_path
+        crop_stack_path,
+        save_mask_stack=save_mask_stack
     )
     # Save some information before the outline-vertices df gets aggregated
     # dropping string columns
     cell_mask_stack_path = outline_df.loc[0, 'cell_mask_stack_path']
     source_xy_bf_stack_path = outline_df.loc[0, 'source_xy_bf_stack_path']
-    outline_df.to_csv('C:/Users/johnp/Downloads/outline.csv', index=False)
     # Only aggregating by frame because it's a little complex now 
     aggdex = [
         'frame'
@@ -1537,7 +1544,11 @@ def cell_tracedf_from_outline_df(
 
     return celltracedf
 
-def get_cell_trace_dfs_from_outline_vertices(mdf, collection_interval_minutes=10):
+def get_cell_trace_dfs_from_outline_vertices(
+        mdf,
+        collection_interval_minutes=10,
+        save_mask_stack=True,
+        **kwargs):
     """
     <mdf> should be generated on a byc compartment dataset that has
     been annotated then segmentated using segment_byc_dataset.py which
@@ -1547,7 +1558,7 @@ def get_cell_trace_dfs_from_outline_vertices(mdf, collection_interval_minutes=10
     compartmentpath = files.get_byc_compartmentdir(mdf.exptname.iloc[0], mdf.compartment_name.iloc[0])
     cell_indices = utilities.get_cell_indices_in_compartment(compartmentpath)
     print(f'Found cell indices in compartment\n{compartmentpath}\n{cell_indices}')
-    keyword = 'outline-vertices'
+    keyword = kwargs.get('outline_file_keyword', 'outline-vertices.csv')
     filenames = [fn for fn in os.listdir(compartmentpath) if keyword in fn]
     filepaths = [os.path.join(compartmentpath, fn) for fn in filenames]
     # Can't rely on order of filenames in directory to get agreement
@@ -1569,7 +1580,8 @@ def get_cell_trace_dfs_from_outline_vertices(mdf, collection_interval_minutes=10
             cell_index,
             outline_df,
             mdf,
-            collection_interval_minutes=collection_interval_minutes
+            collection_interval_minutes=collection_interval_minutes,
+            save_mask_stack=save_mask_stack
         )
         celltracedfs.append(celltracedf)
 
@@ -1608,6 +1620,27 @@ def x_y_coord_arrays_from_image(image):
 
     return X, Y
 
+def get_polygon_vertices_from_mask(mask: np.array):
+    """
+    Returns poly_x, poly_y which are arrays containing the x and y coordinates
+    of the polygon circumscribing the <mask>
+    """
+    [X, Y] = x_y_coord_arrays_from_image(mask)
+    xs = X[mask]
+    ys = Y[mask]
+
+    points = np.array([(xs[i], ys[i]) for i in range(len(xs))])
+    hull = ConvexHull(points)
+    vertex_points = points[hull.vertices]
+    vertex_xs = [vert[0] for vert in vertex_points]
+    vertex_ys = [vert[1] for vert in vertex_points]
+
+    poly = polygon_perimeter(vertex_ys, vertex_xs, mask.shape)
+    poly_x = poly[1]
+    poly_y = poly[0]
+
+    return poly_x, poly_y
+
 def draw_mask_outlines(channel_stack, mask_stack, **kwargs):
     """
     In place, set the pixels in <channel_stack> on the border of the mask
@@ -1617,25 +1650,12 @@ def draw_mask_outlines(channel_stack, mask_stack, **kwargs):
     having to turn it into RGB.
 
     Return nothing
-    """        
+    """
     fillvalue = kwargs.get('fillvalue', 0)
 
     for i, mask in enumerate(mask_stack):
-        [X, Y] = x_y_coord_arrays_from_image(mask)
-        xs = X[mask]
-        ys = Y[mask]
-
-        points = np.array([(xs[i], ys[i]) for i in range(len(xs))])
         try:
-            hull = ConvexHull(points)
-            vertex_points = points[hull.vertices]
-            vertex_xs = [vert[0] for vert in vertex_points]
-            vertex_ys = [vert[1] for vert in vertex_points]
-
-            poly = polygon_perimeter(vertex_ys, vertex_xs, mask.shape)
-            poly_x = poly[1]
-            poly_y = poly[0]
-
+            poly_x, poly_y = get_polygon_vertices_from_mask(mask)
             channel_stack[i][poly_y, poly_x] = fillvalue
         except Exception as e:
             # print(f'Convex hull finding failed at frame {i} with exception:\n{e}')
@@ -1804,7 +1824,6 @@ def segment_stack_with_fluor(stack, **kwargs):
         draw_mask_outlines(stack, objectmasks)
         io.imsave(outlinesavepath, stack, check_contrast=False)
         print(f'Saved segmented outlines at\n{outlinesavepath}')
-    if save_otsu_mask:
         otsusavepath = filepath.replace('.tif', '_otsu_mask.tif')
         otsulist = [mask*1 for mask in otsu_masks]
         otsustack = io.concatenate_images(otsulist)
@@ -1987,12 +2006,19 @@ def refine_and_annotate_celldfs(
     """
 
     for cell_index, celldf in enumerate(celldfs):
+        cell_index = celldf.cell_index.unique()[0]
         celldf.index = range(len(celldf))
         exptname = celldf.loc[0, 'exptname']
         compdir = os.path.join(constants.byc_data_dir, celldf.loc[0, 'compartment_reldir'])
         celldf.loc[:, 'frame'] = celldf.frame_number
         # Read in crop rois .zip as a dataframe
-        crop_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_crop_rois.zip'
+        if 'byc' in exptname:
+            crop_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_crop_rois.zip'
+        elif 'fylm' in exptname:
+            # ROI files get named as 'byc' experiment type regardless
+            # so need to edit path here
+            exptname_temp  = exptname.replace('fylm', 'byc')            
+            crop_rois_fn = f'{exptname_temp}_cell{str(cell_index).zfill(3)}_crop_rois.zip'
         crop_rois_path = os.path.join(compdir, crop_rois_fn)
         crop_rois_df = files.read_rectangular_rois_as_df(crop_rois_path)
         print(f'Read crop_rois df from\n{crop_rois_path}')
@@ -2006,7 +2032,10 @@ def refine_and_annotate_celldfs(
         # are absolute in the original data
         celldf.loc[:, 'frame_absolute'] = first_crop_frame + celldf.frame
         # Read in bud rois .zip as a dataframe
-        bud_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
+        if 'fylm' in exptname:
+            bud_rois_fn = f'{exptname_temp}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
+        else:
+            bud_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
         bud_rois_path = os.path.join(compdir, bud_rois_fn)
         bud_rois_df = files.read_rectangular_rois_as_df(bud_rois_path)
         print(f'Read bud rois df from\n{bud_rois_path}')
@@ -2233,3 +2262,181 @@ def interpolate_masks_by_centroid(
 
     if return_mask:
         return interpolated_masks_stack
+    
+def get_extreme_vertices(
+    maskdf: pd.DataFrame,
+    frame: int,
+    **kwargs
+):
+    """
+    Return a 2d np.array containing x, y coordinates
+    for the most extreme left, right, top, and bottom
+    points of the mask defined in <maskdf> for frame <frame>. 
+    
+    The <maskdf> is generated by segmentation.save_outline_rois_df()
+    and contains x, y coordinates for each vertex of the radial intensity
+    segmentation (or other method) mask at every frame.
+
+    Vertices are 
+    [
+        right,
+        left,
+        top,
+        bottom
+    ]
+    """
+    n_points = kwargs.get('n_points', 5)
+    # get mean x of n_points farthest right points
+    x_right= maskdf.set_index('frame').loc[
+        frame,
+        :
+    ].sort_values(by='x', ascending=False).x.iloc[0:n_points].mean()
+    x_left = maskdf.set_index('frame').loc[
+        frame,
+        :
+    ].sort_values(by='x', ascending=True).x.iloc[0:n_points].mean()
+    y_bottom = maskdf.set_index('frame').loc[
+        frame,
+        :
+    ].sort_values(by='y', ascending=False).y.iloc[0:n_points].mean()
+    y_top = maskdf.set_index('frame').loc[
+        frame,
+        :
+    ].sort_values(by='y', ascending=True).y.iloc[0:n_points].mean()
+    x_center = np.mean([x_left, x_right])
+    y_center = np.mean([y_top, y_bottom])
+    coords = np.array([
+        [x_right, y_center],
+        [x_left, y_center],
+        [x_center, y_top],
+        [x_center, y_bottom]     
+    ])
+    
+    return coords
+
+def ellipse_verts_from_extreme_verts(
+    extreme_vertices: np.array, 
+    n_points: int,
+    offset=2
+):
+    """
+    Return x, y coordinates for an ellipse containing
+    the right, left, top, and bottom points in <extreme_vertices>
+    plus <offset> pixels
+    """
+    x_right = extreme_vertices[0][0]
+    x_left = extreme_vertices[1][0]
+    y_top = extreme_vertices[2][1]
+    y_bottom = extreme_vertices[3][1]
+    x_center = extreme_vertices[2][0]
+    y_center = extreme_vertices[0][1]
+    
+    x_radius = (x_right - x_left + offset)/2
+    y_radius = (y_bottom - y_top + offset)/2
+    
+    t = np.linspace(0, 2*np.pi, n_points)
+    x_vals = x_center + x_radius*np.cos(t)
+    y_vals = y_center + y_radius*np.sin(t)
+    
+    return x_vals, y_vals
+
+def smooth_masks_with_ellipse(mdf, cell_index, **kwargs):
+    """
+    Run this after segmentation using bin/run_segmentation.py
+    to smooth masks into ellipses around the most extreme vertices
+    of the radial segmentation ROIs
+    """
+    fluorophore = kwargs.get('fluorophore', 'yfp')
+    rfp_stack_path = mdf.set_index('cell_index').loc[cell_index, f'{fluorophore}_crop_stack_path']
+    bf_stack_path = mdf.set_index('cell_index').loc[cell_index, 'bf_crop_stack_path']
+    mask_stack_path = bf_stack_path.replace('bf_stack', 'bf_stack_mask')
+    outline_csv_path = bf_stack_path.replace('bf_stack.tif', 'bf_stack_outline-vertices.csv')
+    rfpstack =  io.imread(rfp_stack_path)
+    maskstack = io.imread(mask_stack_path)
+    bfstack = io.imread(bf_stack_path)
+    maskdf = pd.read_csv(outline_csv_path)
+    filenames = []
+    frame_roi_dfs = []
+    frame_masks = []
+    plot_visualization = kwargs.get('plot_visualization', False)
+    for frame in maskdf.frame.unique():
+
+        extreme_vertices = get_extreme_vertices(
+            maskdf,
+            frame
+        )
+        # 
+        width = extreme_vertices[0][0] - extreme_vertices[1][0]
+        offset = 0.05*width
+        x_vals, y_vals = ellipse_verts_from_extreme_verts(
+            extreme_vertices,
+            n_points=30,
+            offset=offset
+        )
+        ellipse_roi_df = pd.DataFrame(
+            {'x': x_vals,
+             'y': y_vals
+            }
+        )
+        # Get a boolean mask of the using the ellipse vertices in
+        # <ellipse_roi_df>
+        ell_mask = get_mask(maskstack[frame], ellipse_roi_df)
+        frame_masks.append(ell_mask)
+        # label the ellipse_roi_df
+        for col in maskdf.columns:
+            if col not in ellipse_roi_df.columns:
+                ellipse_roi_df.loc[:, col] = maskdf.loc[maskdf.frame==frame, col].iloc[0]
+        # Add ellipse_roi_df to list for whole stack
+        frame_roi_dfs.append(ellipse_roi_df)
+        if plot_visualization:
+            fig = plt.figure(figsize=(10, 5))
+            ax = fig.add_subplot(411)
+            ax.set_title(f'Frame={str(frame).zfill(3)}')
+            ax.imshow(rfpstack[frame])
+            ax2 = fig.add_subplot(412)
+            ax2.imshow(maskstack[frame])
+            ax3 = fig.add_subplot(413)
+            ax3.imshow(bfstack[frame])
+            for a in [ax, ax2, ax3]:
+                for pair in extreme_vertices:
+                    a.scatter(pair[0], pair[1], color='red', s=10, alpha=0.7)
+                a.scatter(x_vals, y_vals, color='green', s=5, alpha=1)
+            # Show the new ellipse mask
+            ax4 = fig.add_subplot(414)
+            ax4.imshow(ell_mask)
+            filename = f'frame{str(frame).zfill(3)}.tif'
+            filenames.append(filename)
+            fig.savefig(filename)
+            plt.tight_layout()
+            plt.close('all')
+    if plot_visualization:
+        frames = []
+        for filename in filenames:
+            img = io.imread(filename)
+            frames.append(img)
+        filepaths = [os.path.join(os.getcwd(), fname) for fname in filenames]
+        savepath = mask_stack_path.replace('mask.tif', 'mask_ellipse.mp4')
+        plotting.save_skimage_stack_as_mp4(filepaths, savepath)
+        # Delete tifs for individual frames now that the stack has been saved
+        for filename in filenames:
+            os.remove(filename)
+
+    # Turn the above into function to loop over everything in 
+    # master index and save smooth ellipse outlines that are
+    # compatible with running
+    # celltracedfs = segmentation.get_cell_trace_dfs_from_outline_vertices(
+    #     mdf,
+    #     collection_interval_minutes=collection_interval_minutes
+    # )
+    ellipse_df = pd.concat(frame_roi_dfs)
+    ellipse_df.index = range(len(ellipse_df))
+    savepath = bf_stack_path.replace('.tif', '_outline-vertices-ellipse.csv')
+    ellipse_df.to_csv(savepath)
+    print(f'Saved smoothed outline vertices to\n{savepath}')
+    # Save the new ellipse masks as a tif stack
+    ellipsemasksavepath = bf_stack_path.replace('.tif', '_mask_ellipse.tif')
+    ellmasklist = [mask for mask in frame_masks]
+    cellstack = img_as_ubyte(np.array(ellmasklist))
+    # cellstack = io.concatenate_images(ellmasklist)
+    io.imsave(ellipsemasksavepath, cellstack, check_contrast=False)
+    print(f'Saved mask stack at\n{ellipsemasksavepath}')

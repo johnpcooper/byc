@@ -23,6 +23,7 @@ if __name__=="__main__":
     # per frame as well as mean intensity within cell
     # ROI per frame
     write_segmentation_df = False
+    write_measured_segmentation_df = False
     plot_segmentation_results = True
     print(f'Received {len(sys.argv)} arg variables')
     for v in sys.argv:
@@ -121,9 +122,10 @@ if __name__=="__main__":
                 bfcellstacksdict]
 
         kwargs = {
-            'use_img_inverse': True,
+            'use_img_inverse': False,
             'use_constant_circle_roi': False,
-            'default_radius_px': 5
+            'default_radius_px': 9,
+            'peak_dist_offset': 0
         }
         # If you want to change the distance from center at which the algorithm starts looking
         # for peaks, you need to change distance_min = kwargs.get('distance_min', 6) in the 
@@ -190,17 +192,22 @@ if __name__=="__main__":
     allmeasureddf = pd.concat(allframesdfs_measured, ignore_index=True)
     # Split combined cell dataframes back into individual ones
     celldfs = [allmeasureddf[allmeasureddf.cell_index==cidx] for cidx in allmeasureddf.cell_index.unique()]
-    
-    path = os.path.join(writedir, f"{compartmentname}_alldf_measured.csv.gzip")
-    if os.path.exists(path):
-        print(f'Measured segmentation dataframe exists at\n{path}')
-        oldmeasureddf = pd.read_csv(path, compression='gzip')
-        allmeasureddf = pd.concat([oldmeasureddf, allmeasureddf])
-        allmeasureddf.index = range(len(allmeasureddf))
-        print(f'Concatenated existing and new measured segmentation data')
-    print(f'Writing measured segmentation dataframe to\n{path}')
-    allmeasureddf.to_csv(path, index=False, compression='gzip')
-    print(f'Wrote all trace measurements df at \n{path}')
+    # The segmentation_df contains a row for every radian and every distance from center
+    # so it consumes a huge amount of memory especially if measuring entire-experiment
+    # data. So it won't always work to save it
+    if write_measured_segmentation_df:
+        path = os.path.join(writedir, f"{compartmentname}_alldf_measured.csv.gzip")
+        if os.path.exists(path):
+            print(f'Measured segmentation dataframe exists at\n{path}')
+            oldmeasureddf = pd.read_csv(path, compression='gzip')
+            allmeasureddf = pd.concat([oldmeasureddf, allmeasureddf])
+            allmeasureddf.index = range(len(allmeasureddf))
+            print(f'Concatenated existing and new measured segmentation data')
+        print(f'Writing measured segmentation dataframe to\n{path}')
+        allmeasureddf.to_csv(path, index=False, compression='gzip')
+        print(f'Wrote all trace measurements df at \n{path}')
+    else:
+        print(f'Not writing measured segmentation dataframe')    
     # Aggregate dataset into just one entry per 
     # cell per frame (get rid of intensity vs. theta,
     # radial distance per frame)
