@@ -2018,7 +2018,7 @@ def refine_and_annotate_celldfs(
             # ROI files get named as 'byc' experiment type regardless
             # so need to edit path here
             exptname_temp  = exptname.replace('fylm', 'byc')            
-            crop_rois_fn = f'{exptname_temp}_cell{str(cell_index).zfill(3)}_crop_rois.zip'
+            crop_rois_fn = f'{exptname_temp}_cell{str(int(cell_index)).zfill(3)}_crop_rois.zip'
         crop_rois_path = os.path.join(compdir, crop_rois_fn)
         crop_rois_df = files.read_rectangular_rois_as_df(crop_rois_path)
         print(f'Read crop_rois df from\n{crop_rois_path}')
@@ -2033,9 +2033,9 @@ def refine_and_annotate_celldfs(
         celldf.loc[:, 'frame_absolute'] = first_crop_frame + celldf.frame
         # Read in bud rois .zip as a dataframe
         if 'fylm' in exptname:
-            bud_rois_fn = f'{exptname_temp}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
+            bud_rois_fn = f'{exptname_temp}_cell{str(int(cell_index)).zfill(3)}_bud_rois.zip'
         else:
-            bud_rois_fn = f'{exptname}_cell{str(cell_index).zfill(3)}_bud_rois.zip'
+            bud_rois_fn = f'{exptname}_cell{str(int(cell_index)).zfill(3)}_bud_rois.zip'
         bud_rois_path = os.path.join(compdir, bud_rois_fn)
         bud_rois_df = files.read_rectangular_rois_as_df(bud_rois_path)
         print(f'Read bud rois df from\n{bud_rois_path}')
@@ -2317,7 +2317,7 @@ def get_extreme_vertices(
 def ellipse_verts_from_extreme_verts(
     extreme_vertices: np.array, 
     n_points: int,
-    offset=2
+    offset=-3
 ):
     """
     Return x, y coordinates for an ellipse containing
@@ -2367,7 +2367,8 @@ def smooth_masks_with_ellipse(mdf, cell_index, **kwargs):
         )
         # 
         width = extreme_vertices[0][0] - extreme_vertices[1][0]
-        offset = 0.05*width
+        # offset = 0.05*width
+        offset = 0
         x_vals, y_vals = ellipse_verts_from_extreme_verts(
             extreme_vertices,
             n_points=30,
