@@ -38,7 +38,7 @@ def find_cell_row(cell_roi_df, master_index_df):
             matching_rows.append(row)
 
     if len(matching_rows) > 1:
-        print(f"Found multiple rows matching cell_roi_df. Check master index for duplicates at:/n{master_index.path.iloc[0]}")
+        print(f"Found multiple rows matching cell_roi_df. Check master index for duplicates at:/n{master_index_df.path.iloc[0]}")
         return None
     elif len(matching_rows) == 0:
         print("Found no rows in master_index_df matching cell_roi_df")
