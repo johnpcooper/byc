@@ -132,7 +132,7 @@
     # 20230126_byc is the experiment name in the example dataset
     ```
 
-1. Create a compartment directory in the experiment directory created above. This will hold all channel stacks corresponding to xy positions collected in the experiment that are within a certain flow compartment of the microfluidic device. The name of the compartment directory needs to identify the strain being imaged and potentially other conditions like small molecule concentration etc.
+1. Create a compartment directory in the experiment directory created above. This will hold all channel stacks corresponding to xy positions collected in the experiment that are within a certain flow compartment of the microfluidic device. The name of the compartment directory must start with `XXXXXXXX_byc` where XXXXXXXX is the date of the experiment in ISO format. The compartment directory must also identify the strain being imaged and potentially other conditions like small molecule concentration etc.
 
     ```sh
     # This compartment directory name typically includes the strain number
@@ -150,15 +150,17 @@
 
 1. Run Fiji (`C:/Users/usrname/AppData/Local/Fiji.app/ImageJ-win64.exe`)
 1. Open the xy stack you want to analyze (`20230126_byc\20230126_byc_JPC228_UBL-YFP-Su9_BY4741\20230126_byc_xy09_bf_stack.tif` inside the byc data directory you created above)
+1. Identify cells you want to analyze. Look over the data and write down when each exponential decay period apepars to start. You want to start your crop ROIs at least 90 minutes before the exponential decay start frame.
 1. For each cell you want to analyze:
     1. Annotate crop ROIs, which are essentially key frames, to track the cell of interest. 
-        * Draw a rectangular box with its center somewhere inside the cell at the first frame you want to segment. Press 't' to add this box selection to `RoiManager`. 
+        * Draw a rectangular box with its center somewhere near the center of the cell at the first frame you want to segment. Press 't' to add this box selection to `RoiManager`. 
         * Scroll through the stack until you need to adjust the box selection to keep its center within the cell of interest. When needed, move the box so its center is within the cell of interest and press 't' to add the box to `RoiManager`
         * Add another ROI like above at the last frame you want to segment
         * Make sure that your ROIs in `RoiManager` are sorted by position (select all ROIs, right click, click 'sort')
-        * Press 'L' to focus the Fiji search bar and type 'save cell roi set` and press enter
+        * Press 'll,' to focus the Fiji search bar and type 'save cell roi set` and press enter
         * When prompted, enter ROI set type as "crop". Enter other annotation information as relevant
     1. Annotate bud ROIs, which are rectangular selections marking the frame before a bud first becomes visible (for cerevisiae data) or the frame at which the vertical fission line first becomes visible (for pombe data). These frame of interest are referred to as the "bud frame":
+        * Create shortcuts for creating bud ROIs that annotate daughter shape. Set "6" to trigger the `name_round_roi.py` installed above with `imagejpc`. Set "7" to 
         * For each bud frame (as described above) draw a rectangular box around the area where the budding or fission event occurs. If analyzing budding yeast data, this frame will be used to annotate the shape of the daughter cell that came before the daughter appearing at the bud frame. If the previous daughter was round, press "6" to add the bud frame ROI to `RoiManager`. If the previous daughter was elongated, press "7" to add the bud frame ROI to `RoiManager`. If you're annotating fission yeast or daughter isn't relevant, simply press 't' to add an unlablled bud ROI to `RoiManager`
         * Once you have created an ROI for each bud frame as described above, add one more frame annotating the end of our observation of the current cell. If the cell escapes or dies, create an ROI at the frame in which the cell was last seen alive/in its catch tube. If the cells is still alive in the device when the experiment ends, create an ROI at the last frame of the stack
         * Sort the ROIs in `RoiManager`, press 'L' to focus the search bar, and enter 'save cell roi set'
@@ -171,3 +173,11 @@ This step is executed in the jupyter notebook at [byc/notebooks/BYC_pipeline.ipy
 ## Segmenting and analyzing cover slip imaging data
 
 Use `byc` and `imagejpc` to image steady state imaging of cells imaged on a coverslip (not in the BYC device). The [byc/notebooks/Steady_state_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/Steady_state_pipeline.ipynb) documents how to install Fiji plugins from `imagejpc` and use them to segment and measure fluorescence in indivudual cells. The notebook then executes steps to read in the data and analyze it.
+
+## Adding BYC to central database and meta-analysi
+
+Usage for adding new experiments to the database. The `refresh_database.py` script is found in `byc/bin`. In this example you're adding four new compartments with their names separated by '|' pipe.
+
+```sh
+python refresh_database.py "20240709_byc_JPC263_rkk_rpn4d|20240801_byc_JPC263_rkk_rpn4d_isolate-1|20240801_byc_JPC263_rkk_rpn4d_isolate-2|20240801_byc_JPC263_rkk_rpn4d_isolate-3"
+```
