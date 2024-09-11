@@ -31,7 +31,7 @@ class bycImageSet(object):
         if 'Channels' in self.display_and_comments.keys():
             self.channel_names = [channel['Name'] for channel in self.display_and_comments['Channels']]
         else: # The micro-manager 2 paradigm
-             self.channel_names = self.display_and_comments['Summary']['ChNames']
+            self.channel_names = self.display_and_comments['Summary']['ChNames']
         
     def output_dir_path(self, input_dir_path):
         """
@@ -78,22 +78,39 @@ class bycImageSet(object):
         
         fov_channels_dict = {}
         for channelindex, channel in enumerate(self.channel_names):
+            # Look for frames of individual channel with the naming convention from
+            # micro-manager 1 where filenames include the actual channel name
             channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if channel in fn]
-            if len(channel_paths) == 0:
+            n_channel_paths = len(channel_paths)
+            if n_channel_paths == 0:
                 # In micro-manager 2, files are saved with the index of their channel,
                 # not the channel name itself. The order of the channels in self.channel_names
                 # matches their index in the metadata
                 numberpattern = str(channelindex).zfill(3)
                 channelpattern = f'(channel)({numberpattern})'
                 channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if re.search(channelpattern, fn)]
-            # Files don't get listed in order on unix based OS so 
-            # we need to sort so that frames get read in in order
-            channel_paths.sort()
-            fov_channels_dict[channel] = [skimage.io.imread(path) for path in channel_paths]
+                n_channel_paths = len(channel_paths)
+                print(f'Found {n_channel_paths} frames for {channel}')
+            # Check whether metadata file that claims more channels than exist. This
+            # is useful because before acquisition is completed, micro-manager hasn't
+            # written a completed dictionary to metadata.txt so it gives an error
+            # if we try to read it. Only reading in channel_paths that exists let's us
+            # use the metadata.txt file from a previous experiment with say bf, rfp, and yfp 
+            # on a currently running experiment with only bf and yfp
+            if n_channel_paths > 0:
+                # Files don't get listed in order on unix based OS so 
+                # we need to sort so that frames get read in in order
+                channel_paths.sort()
+                fov_channels_dict[channel] = [skimage.io.imread(path) for path in channel_paths if os.path.exists(path)]
+            else:
+                pass
+        if n_channel_paths > len(fov_channels_dict):
+            print(f'More channels in metadata than in data')
         # Crop out data outside the middle half of each frame because
         # there are no cells there and we want as lean a dataset as possible
         if crop_frames == True:
-            for key in fov_channels_dict.keys():
+
+            for channel_i, key in enumerate(fov_channels_dict.keys()):
                 stack = fov_channels_dict[key]
                 frame0 = stack[0]
                 total_width = frame0.shape[1]
@@ -209,6 +226,8 @@ def align_fov(
     save_unaligned = kwargs.get('save_unaligned', False)
     channels = byc_image_set.fov_channels_dict(fov_index,
                                                byc_image_set.fov_dir_paths_dict)
+    # If I want to use this functionality again, it should be run after 
+    # the images have been registered
     if rotate:
         # Find a good rotational offset and rotate images in each channel
         # stack by that rotational offset
@@ -220,7 +239,7 @@ def align_fov(
     # Registration typicall works better when I 
     # use an image later in the stack for
     base_image_index = int(len(rotated_channels['Brightfield'])/2)
-    # base_image_index = 75
+    # base_image_index = 30
     base_image = rotated_channels['Brightfield'][base_image_index]
     # Calculate the tranlsational registration offsets
     offsets = registration.determine_offsets(base_image, rotated_channels['Brightfield'])
@@ -266,7 +285,7 @@ def align_byc_expt(**kwargs):
     """
     input_path = kwargs.get('input_path', None)
     write_output = kwargs.get('write_output', True)
-    save_unaligned = kwargs.get('save_unaligned', True)
+    save_unaligned = kwargs.get('save_unaligned', False)
 
     if input_path != None and os.path.exists(input_path):
         byc_image_set = bycImageSet(input_dir_path=input_path)
