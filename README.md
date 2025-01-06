@@ -1,7 +1,7 @@
 # BYC (Budding Yeast Chemostat)
 
 <p align="center">
-<img src="https://www.dropbox.com/s/fsv2bvrxtlpkzte/byc_schematic.png?raw=true" width="300">
+<img src="https://utexas.box.com/shared/static/p36rcyed5l06xkspi057neidq2upjygi.png" width="300">
 </p>
 
 `byc` is a python library for processing, annotating, and analyzing time lapse microscopy of budding and fission yeast trapped in the BYC device illustrated above. Installation and usage are detailed below.
@@ -168,16 +168,18 @@
 
 ### 4. Segment cells and measure fluorescence using annotation data created above
 
-This step is executed in the jupyter notebook at [byc/notebooks/BYC_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/BYC_pipeline.ipynb). This  notebook details the above installation steps and executes cell segmentation, curve fitting to fluorescence measurements, and writing of aggregated single cell data (fluorescence and bud timing) to .csv files.
+This step is executed in the jupyter notebook at [byc/notebooks/BYC_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/BYC_pipeline.ipynb). This  notebook executes cell segmentation, curve fitting to fluorescence measurements, and writing of aggregated single cell data (fluorescence and bud timing) to .csv files.
 
 ## Segmenting and analyzing cover slip imaging data
 
 Use `byc` and `imagejpc` to image steady state imaging of cells imaged on a coverslip (not in the BYC device). The [byc/notebooks/Steady_state_pipeline.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/Steady_state_pipeline.ipynb) documents how to install Fiji plugins from `imagejpc` and use them to segment and measure fluorescence in indivudual cells. The notebook then executes steps to read in the data and analyze it.
 
-## Adding BYC to central database and meta-analysi
+## Adding BYC to central database and meta-analysis
 
 Usage for adding new experiments to the database. The `refresh_database.py` script is found in `byc/bin`. In this example you're adding four new compartments with their names separated by '|' pipe.
 
 ```sh
 python refresh_database.py "20240709_byc_JPC263_rkk_rpn4d|20240801_byc_JPC263_rkk_rpn4d_isolate-1|20240801_byc_JPC263_rkk_rpn4d_isolate-2|20240801_byc_JPC263_rkk_rpn4d_isolate-3"
 ```
+
+Use the notebook at [byc/notebooks/Manuscript01.ipynb](https://github.com/johnpcooper/byc/blob/master/notebooks/Manuscript01.ipynb) to read in data and do meta analysis.
