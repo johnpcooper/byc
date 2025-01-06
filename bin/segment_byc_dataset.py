@@ -122,10 +122,10 @@ if __name__=="__main__":
                 bfcellstacksdict]
 
         kwargs = {
-            'use_img_inverse': False,
+            'use_img_inverse': True,
             'use_constant_circle_roi': False,
-            'default_radius_px': 9,
-            'peak_dist_offset': 0
+            'default_radius_px': 10,
+            'peak_dist_offset': -1
         }
         # If you want to change the distance from center at which the algorithm starts looking
         # for peaks, you need to change distance_min = kwargs.get('distance_min', 6) in the 
