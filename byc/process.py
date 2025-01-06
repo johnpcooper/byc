@@ -81,8 +81,7 @@ class bycImageSet(object):
             # Look for frames of individual channel with the naming convention from
             # micro-manager 1 where filenames include the actual channel name
             channel_paths = [os.path.join(fov_dir_path, fn) for fn in tiffiles if channel in fn]
-            n_channel_paths = len(channel_paths)
-            if n_channel_paths == 0:
+            if len(channel_paths) == 0:
                 # In micro-manager 2, files are saved with the index of their channel,
                 # not the channel name itself. The order of the channels in self.channel_names
                 # matches their index in the metadata
@@ -239,7 +238,7 @@ def align_fov(
     # Registration typicall works better when I 
     # use an image later in the stack for
     base_image_index = int(len(rotated_channels['Brightfield'])/2)
-    # base_image_index = 30
+    # base_image_index = 190
     base_image = rotated_channels['Brightfield'][base_image_index]
     # Calculate the tranlsational registration offsets
     offsets = registration.determine_offsets(base_image, rotated_channels['Brightfield'])
