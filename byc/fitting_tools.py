@@ -1,4 +1,5 @@
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ from scipy.stats import mannwhitneyu
 from scipy.stats import linregress
 from inspect import signature
 
+import lmfit
 from lmfit.model import ModelResult
 from lmfit import Model
 from lmfit import Parameters
@@ -32,6 +34,15 @@ def line_exp(x, m, intercept, a, k, c):
     y = (m*x + intercept) + (a*np.exp(-k*x) + c)
     return y
 
+def exp_turn_down(x, a, k, c):
+    return c - a*np.exp(x*k)
+
+def exp_turn_down_simple(x, k, c):
+    return c - np.exp(x*k)
+
+def power_law(x, a, k, c):
+    return a*(np.power(x, k)) + c
+
 def gaussian(x, a, x0, sigma):
     return a*np.exp(-(x-x0)**2/(2*sigma**2))
 
@@ -51,6 +62,25 @@ def sigmoid(x, L ,x0, k, b):
     """
     y = L / (1 + np.exp(-k*(x-x0))) + b
     return (y)
+
+def piecewise_linear(x, x0, y0, k1):
+    return np.piecewise(x, [x <= x0, x>x0], [lambda x:y0, lambda x:k1*x + y0 - x0*k1])
+
+def gompertz(x, a, b):
+    y = np.exp(a/b*(1-np.exp(b*x)))
+    return y
+
+def gompertz_hazard(x, a, b):
+    y = a*np.exp(b*x)
+    return y
+
+def gompertz_makeham(x, a, b, l):
+    """
+    Makeham adds an aging-independent death risk (on top
+    of a)
+    """
+    y = np.exp(-l*x - a/b*(np.exp(b*x)-1))
+    return y
 
 def get_r_squared(y, y_pred):
     """
@@ -209,6 +239,8 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
     """
     Fit a single or double exponential function to the data in cell_df.col_name.
     X axis is cell_df.hours[0:end_frame - startframe]
+
+    Return dictionary of fit parameters
     """
     param_options = list('abcdefghijklmnop')
     # Choose how many total frames to use for fit
@@ -259,11 +291,17 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
     y_raw.index = range(0, len(y_raw))
     y_norm = y_raw / y_raw.iloc[0]
     print(f'Length of y_raw = {len(y_raw)}. Length of y_norm = {len(y_norm)}')
-    x = cell_df.loc[0: len(y_norm)-1, x_var]
+    if x_var != 'hours_rel':
+        x = cell_df.loc[0: len(y_norm)-1, x_var]
+    else:
+        x = cell_df.loc[start_frame: end_frame, x_var]
+        x.index = range(0, len(x))
     print(f'Fitting with x length {len(x)} and y length {len(y_norm)}')
+
+    x_input_norm = x - np.min(x)
     
     # Define a list of paramaters to be added to the final params_dict
-    names_to_add = ['x_input', 'y_input_raw', 'y_input_norm',
+    names_to_add = ['x_input', 'x_input_norm', 'y_input_raw', 'y_input_norm',
                     'y_pred_norm', 'residual', 'r_sq',
                     'est_std_err', 'shapiro_p']
     n_model_params = len(signature(fit_func).parameters) - 1
@@ -289,7 +327,7 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
         print(f'Calculating shapiro_p')
         shapiro_p = get_shapiro_p(residuals)
         # Add fit output and quality measures etc. to params_dict
-        values = [x, y_raw, y_norm,
+        values = [x, x_input_norm, y_raw, y_norm,
                   y_pred_norm, residuals, r_sq,
                   est_std_err, shapiro_p]
         # Tack on parameters to end of params_dict values lists 
@@ -317,7 +355,7 @@ def exp_fit(cell_df, start_frame, fit_func=single_exp,
 
 def get_all_fits_df(dfs_list, universal_start_frame, window_size,
                     fit_func=single_exp, col_name='yfp_norm',
-                    background_subtract=True, expl_vars=None,
+                    x_var='hours_rel', background_subtract=True, expl_vars=None,
                     bounds=None, manual_bg=None, **kwargs):
     
     background = manual_bg
@@ -338,6 +376,7 @@ def get_all_fits_df(dfs_list, universal_start_frame, window_size,
             print('Got start frame from trace dataframe')
         else:
             print('Using universal start frame')
+            start_frame = universal_start_frame
         print(f'Using start frame {start_frame} for fit')
         try:
             fit_params_dict = exp_fit(dfs_list[i], start_frame,
@@ -345,7 +384,7 @@ def get_all_fits_df(dfs_list, universal_start_frame, window_size,
                                       background=background,
                                       background_subtract=background_subtract,
                                       expl_var_names=expl_vars, window_width=window_size,
-                                      bounds=bounds)
+                                      bounds=bounds, x_var=x_var)
             fit_params_dfs.append(pd.DataFrame(fit_params_dict))
         except Exception as e:
             print('fit failed for cell ', i)
@@ -376,14 +415,14 @@ def scan_start_frames(cell_df, col_name='yfp_norm', fit_func=single_exp, window_
     fit_windows = []
 
     for timepoint in cell_df.loc[xmin:xmax, xvar]:
-        print(f'Fitting cell {cell_df.cell_index.iloc[0]} frame {timepoint}')
+        # print(f'Fitting cell {cell_df.cell_index.iloc[0]} frame {timepoint}')
         start_frame = timepoint
         end_frame = cell_df[xvar].max()
         # end_frame = timepoint + window_size
         # Check if end frame is out of index, if not 
         if start_frame in list(cell_df[xvar]) and end_frame in list(cell_df[xvar]):
             start_frame = int(start_frame)
-            print(f'Start frame = {start_frame}')
+            # print(f'Start frame = {start_frame}')
             end_frame = int(end_frame)
             #print(f'Found window at ({start_frame}, {end_frame})')
             fit_windows.append(tuple((start_frame, end_frame)))
@@ -394,13 +433,13 @@ def scan_start_frames(cell_df, col_name='yfp_norm', fit_func=single_exp, window_
                                       fit_func,
                                       col_name=col_name,
                                       x_var=xvar)
-                print(f'Attempting to make params_df')
+                # print(f'Attempting to make params_df')
                 params_df = pd.DataFrame(params_dict)
                 ss_resids = np.sum(np.power(params_df.residual, 2))
                 params_df.loc[:, 'ss_residuals'] = ss_resids
                 fit_results.append(params_df)
             except Exception as e:
-                print(f'fit failed at frame {start_frame}')
+                # print(f'fit failed at frame {start_frame}')
                 print(e)
                 fit_results.append(None)
 
@@ -580,6 +619,36 @@ def fit_experiment(alldf, **kwargs):
 
     return allfitsdf, allfitsdf_smooth
 
+def rls_table_from_buds_df(
+    buds_df: pd.DataFrame,
+    aggdex = ['compartment_bud_id', 'end_event_type', 'rls_suitable'],
+    cols = ['rls', 'first_bud_frame'],
+    observed_since_start_cutoff = 18
+    ):
+    """
+    buds_df should be a dataframe with a row for each bud
+    appearance for each cell. If there are multi chase cells, 
+    they will show up multiple times so the table needs to aggregated
+    down to individual cells (specified by compartment_bud_id index)
+    and without each individual bud appearance.
+
+    Cells whose first bud was observed within the first 3 hours of the
+    experiment will be considered observed throughout RLS
+
+    Will also run annotate_mdf_censors on the dataframe before returning
+
+    Return rls_table dataframe
+    """
+    aggfuncs = [[np.median] for col in cols]
+    rls_table = buds_df.groupby(by=aggdex, as_index=False, dropna=False).agg(dict(zip(cols, aggfuncs)))
+    colnames = [col[0] for col in rls_table.columns]
+    rls_table.columns = colnames
+    rls_table.loc[:, 'observed_since_start'] = False
+    rls_table.loc[rls_table.first_bud_frame<observed_since_start_cutoff, 'observed_since_start'] = True
+    rls_table = annotate_mdf_censors(rls_table)
+
+    return rls_table
+
 def annotate_mdf_censors(mdf):
     """
     To prepare to fit survival curves to RLS data in the 
@@ -717,7 +786,11 @@ def df_from_ModelResult(result: ModelResult):
         fitdict[key] = param.value
         fitdict[f"{key}_stderr"]= stderr
         fitdict[f"{key}_stderr_fraction"] = std_err_fraction
-
+        fitdict['ndata'] = result.ndata
+    # Add evaluation of entire fit to data frame dict
+    fitdict['rsquared'] = result.rsquared
+    fitdict['chisqr'] = result.chisqr
+    fitdict['reduced_chisqr'] = result.redchi
     fitdf = pd.DataFrame(fitdict, index=[0])
 
     return fitdf
@@ -725,7 +798,7 @@ def df_from_ModelResult(result: ModelResult):
 def fit_logistic_to_fits_df(
     sub_fits_df: pd.DataFrame,
     yvar='b',
-    xvar='dist_from_sen',
+    xvar='buds_after_death',
     name=None,
     fitting_func=logistic,
     plot_results=False,
@@ -747,26 +820,24 @@ def fit_logistic_to_fits_df(
     params = Parameters()
     bounds_dict = {
         'L': (L - bounds_margin*L, L + bounds_margin*L),
-        'k': (0, 10),
-        'x_center': (0, 8),
+        'k': (-10, 0),
+        'x_center': (-8, 0),
         'offset': (offset - bounds_margin*offset, offset + bounds_margin*offset)
     }
 
     guesses_dict = {
         'L': L,
         'k': slope_guess,
-        'x_center': 3,
+        'x_center': -3,
         'offset': offset
     }
 
     vary_dict = {
-        'L': False,
+        'L': True,
         'k': True,
         'x_center': True,
-        'offset': False
+        'offset': True
     }
-
-
     for key, val in bounds_dict.items():
         params.add(key, value=guesses_dict[key], min=np.min(val), max=np.max(val), vary=vary_dict[key])
 
@@ -805,7 +876,7 @@ def fit_logistic_to_fits_df(
         ax = result.plot_fit()
         fig = plt.figure()
         fig.axes.append(ax)
-        ax.set_xlim(25, -1)
+        ax.set_xlim(-40, 1)
         ax.set_ylim(0, 4)
     # Save the fit params and error tables
     filename = f'{name}_logistic-fit_b-vs-dist-from-sen.csv'
@@ -836,7 +907,7 @@ def fit_line_to_fits_df(
     ):
     if name is None:
         name = sub_fits_df.strain_name.iloc[0]
-    sorted_subdf = sub_fits_df.sort_values(by='dist_from_sen', ascending=False)
+    sorted_subdf = sub_fits_df.sort_values(by=xvar, ascending=True)
     # table = sorted_subdf.pivot_table(index='dist_from_sen', aggfunc=np.median).reset_index()
     # Use df = table if you want to fit to the medians per x value instead of all the data
     # df = table
@@ -848,7 +919,7 @@ def fit_line_to_fits_df(
     fitsdf = df_from_ModelResult(result)
     fitsdf.loc[:, 'strain_name'] = name
     params = (fitsdf['m'].iloc[0], fitsdf['b'].iloc[0])
-    x_smooth = range(int(df[xvar].max())+1)
+    x_smooth = x_smooth = np.arange(int(df[xvar].min()-1), int(df[xvar].max()+1), 1)
     y_pred = line(x_smooth, *params)
     stderrs = get_stderr_by_x(x_smooth, y_pred, sub_fits_df)
     smoothdf = pd.DataFrame(
@@ -884,3 +955,141 @@ def fit_line_to_fits_df(
         return fitsdf, smoothdf, result
     else:
         return fitsdf
+    
+
+def fit_model_to_df(
+    df: pd.DataFrame,
+    subselection_bool: pd.core.series.Series,
+    model: lmfit.model.Model,
+    guesses_dict: dict,
+    xvar='buds_after_death',
+    yvar='b',
+    bounds_dict=None,
+    label_parent_df=False,
+    **kwargs
+):
+    """
+    Fit the model using lmfit to the <subselection_bool> boolean index
+    subselection of <df> using <xvar> to predict <yvar>
+
+    if <label_parent_df>, add parameters found in the fit to the parent <df>
+    with the parameter name and a reference to the fit function and x and y vars
+    
+    Return (model.fit() result object, result_df)
+    """
+    params = Parameters()
+    vary_dict = {}
+    for key in guesses_dict.keys():
+        vary_dict[key] = True
+    # If no bounds dict was passed, set range to go
+    # from negative inf to inf
+    if not bounds_dict:
+        bounds_dict = {}
+        for key in guesses_dict.keys():
+            bounds_dict[key] = (-np.inf, np.inf)
+        
+    for key, val in guesses_dict.items():
+        params.add(key,
+                   value=guesses_dict[key],
+                   min=bounds_dict[key][0],
+                   max=bounds_dict[key][1],
+                   vary=vary_dict[key])
+    result = model.fit(df.loc[subselection_bool, yvar], params, x=df.loc[subselection_bool, xvar])
+    result_df = df_from_ModelResult(result)
+    # Get the fit function name as a pretty string
+    model_name = model.name
+    match = re.search(r'\(([^)]+)\)', model_name)
+    if match:
+        model_name = match.groups()[0]
+    else:
+        # If match fiding failed, just leave model_name as is
+        print(f'No match in {model_name}')
+        pass
+    # Label the parent dataframe with waht was found in this fit
+    if label_parent_df:
+        for col in result_df.columns:
+            value = result_df[col].iloc[0]
+            newcol = f'{col}_from_{model_name}_{yvar}_vs_{xvar}'
+            df.loc[subselection_bool, newcol] = value
+    # Add descriptor data from the parent dataframe to the fit result dataframe
+    for col in df.columns:
+        if len(df[col].unique()) == 1 and col not in result_df.columns:
+            result_df.loc[:, col] = df[col].unique()[0]
+    # Add a complete date-strain_name list in case we're fitting
+    # to multiple compartment datasets
+    if 'date' in df.columns and 'strain_name' in df.columns:
+        date_strains = [str(tup[0]) + '-' + str(tup[1]) for tup in df[subselection_bool].set_index(['date', 'strain_name']).index.unique()]
+        date_strains_str = '|'.join(date_strains)
+        result_df.loc[:, 'date_strain'] = date_strains_str
+    # Document the model function name used to generate the fit    
+    result_df.loc[:,  f'{yvar}_vs_{xvar}_fit_with_model'] = model_name
+    return result, result_df
+    
+class ModelGuesses(object):
+
+    def __init__(self):
+
+        self.logistic = self.get_logistic()
+        self.exponential_turn_down = self.get_exponential_turn_down()
+        self.exponential = self.get_exponential()
+        self.piecewise_linear = self.get_piecewise_linear()
+        self.power_law = self.get_power_law()
+        self.line = self.get_line()
+    
+    def get_logistic(self):
+        guesses = {
+        'L': 1,
+        'k': -1,
+        'x_center': -5,
+        'offset': 1
+        }
+        model = Model(logistic)
+        return model, guesses
+    
+    def get_exponential_turn_down(self):
+        guesses = {
+        'a': 1,
+        'k': 1,
+        'c': 1
+        }
+        model = Model(exp_turn_down)
+        return model, guesses
+    
+    def get_exponential(self):
+        guesses = {
+        'a': 1,
+        'b': 1,
+        'c': 1
+        }
+        model = Model(single_exp)
+        return model, guesses
+
+    def get_piecewise_linear(self):
+        guesses = {
+        'x0': -5,
+        'y0': 2,
+        'k1': 1
+        }
+        model = Model(piecewise_linear)
+        return model, guesses
+
+    def get_power_law(self):
+        guesses = {
+        'a': 1,
+        'k': 2,
+        'c': 1
+        }
+        model = Model(power_law)
+        return model, guesses
+    
+    def get_line(self):
+        guesses = {
+            'm': 1,
+            'b': 0
+        }
+
+        model = Model(line)
+        return model, guesses
+
+model_guesses = ModelGuesses()
+

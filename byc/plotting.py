@@ -21,7 +21,7 @@ from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 from scipy.stats import shapiro
 from scipy.stats import gaussian_kde
 # Stuff from byc
-from byc import files, constants, segmentation
+from byc import files, constants, segmentation, trace_tools, fitting_tools
 
 plt_params_dict = {'font.sans-serif': 'Arial'}
 
@@ -67,9 +67,11 @@ class annoying_strings():
         self.k_inverse_hrs = 'k (hr$^{-1}$)'
         self.r_sq = 'R$^2$'
         self.mu = u"\u03bc"
+        self.k_old_over_young = "$k_{postSEP}$/$k_{preSEP}$"
+        self.plus_minus = u"\u00B1"
 
 def figure(**kwargs):
-    figsize = kwargs.get('figsize', (2.5, 2.5))
+    figsize = kwargs.get('figsize', (2, 2))
     height_scale = kwargs.get('height_scale', 1)
     width_scale = kwargs.get('width_scale', 1)
     dpi = kwargs.get('dpi', 250)
@@ -1007,17 +1009,18 @@ def filename_from_kwargs(kwargs_dict, ext='.png'):
         'hue_order',
         'order',
         'line_kws',
-        'scatter_kws']
+        'scatter_kws',
+        'yerr']
     filename = '_'.join([f'{key}={val}' for key, val in kwargs_dict.items() if key not in excluded_kws])
     filename = f'{filename}{ext}'
     return filename
 
-def save_figure(fig, kwargs_dict, ext='.png'):
+def save_figure(fig, kwargs_dict, ext='.png', **kwargs):
     """
     Save the figure to byc.constants.source_dir.plots_dir
     and print the saved location
     """
-    filename = filename_from_kwargs(kwargs_dict, ext=ext)
+    filename = kwargs.get('filename', filename_from_kwargs(kwargs_dict, ext=ext))
     # Get rid of problematic characters that may have come from
     # column titles etc.
     filename.replace('/', 'over')
@@ -1044,40 +1047,46 @@ def get_pre_post_sep_palette(
 
 def plot_dist_from_sen_palette_key(
         max_dist_from_sen=20,
+        min_dist_from_sen=0,
         major_tick_space=5,
         minor_tick_space=1,
         alpha=1,
         colors=None,
         ext='.svg',
         xlabel='Buds before death',
-        direction= 'declining'
+        direction= 'declining',
+        xticks=None
     ):
+    palette_len = max_dist_from_sen - min_dist_from_sen + 1
     if colors:
-        print('Using user defined colors list')
+        pass
     else:
         if direction == 'declining':
-            colors = sns.color_palette('viridis_r', max_dist_from_sen+1)
+            colors = sns.color_palette('viridis_r', palette_len)
         elif direction == 'ascending':
-            colors = sns.color_palette('viridis', max_dist_from_sen+1)
+            colors = sns.color_palette('viridis', palette_len)
     colors_list = [c for c in colors]
     # Plot the continuous legend
     fig, ax = figure_ax(height_scale=0.2, width_scale=0.75)
     fig.set_dpi(300)
-    x1 = np.arange(0, max_dist_from_sen, 1)
+    x1 = np.arange(min_dist_from_sen, max_dist_from_sen+0.1, 1)
     y = np.full(len(x1), 1)
     colors_list_alpha = [matplotlib.colors.to_rgba(c, alpha) for c in colors_list]
     for i, color in enumerate(colors_list_alpha):
-        x = np.arange(i-0.5, i+1.5, 1)
+        x = [x1[i]-0.5, x1[i]+0.5]
         y = np.full(len(x), 0.5)
         ax.fill_between(x, y, color=color, edgecolor=None)
-
-    xticks = list(np.arange(0, max_dist_from_sen + 0.5, major_tick_space))
+    
+    if not xticks:
+        xticks = list(np.arange(min_dist_from_sen, max_dist_from_sen + 0.5, major_tick_space))
+    else:
+        pass
     ax.set_ylim(0, 1)
     if direction == 'declining':
         ax.set_xlim( max_dist_from_sen + 0.5, -0.5)
         xticks.reverse()
     else:
-        ax.set_xlim(-0.5, max_dist_from_sen+0.5)
+        ax.set_xlim(min_dist_from_sen-0.5, max_dist_from_sen+0.5)
     
     ax.set_xticks(xticks)
     ax.spines['left'].set_visible(False)
@@ -1092,6 +1101,16 @@ def plot_dist_from_sen_palette_key(
     fig.savefig(savepath)
     print(f'Saved figure at\n{savepath}')
 
+def plot_timestamp(ax, frame):
+    
+    timestamp = str(np.round(frame*10/60, 2)).zfill(2)
+    ax.annotate(
+        f'{timestamp} hrs.',
+        (0.05, 0.1),
+        xycoords='axes fraction',
+        color='white',
+        fontsize=8)
+
 def get_gene_deletion_string(genename: str):
     """
     Return string for italicized <genename>  + 
@@ -1101,6 +1120,267 @@ def get_gene_deletion_string(genename: str):
     new_str = base_str.replace('gene', genename)
     return new_str
 
+
+def plot_k_vs_dist_from_sen(
+        sub_fits_df,
+        sub_bud_df,
+        yvar1='b',
+        yvar2='cycle_duration_hrs',
+        xvar='buds_after_death',
+        fit_type='median',
+        xlabel='Buds before senescence',
+        xlim=(-30, 1),
+        ylim_k=(0, 5),
+        ylim_cycle=(0, 5),
+        shade_stderr = False,
+        scatteralpha=0.25,
+        fillalpha = 0.25,
+        fillsep = True,
+        width_scale=1,
+        constrain_logistic=False,
+        **kwargs):
+    """
+    Plot k from exponential decay fit of YFP degradation trace
+    for each individual cell vs. the number of buds it would 
+    produce before death
+
+    sub_fits_df and sub_bud_df are slices of the dataframes 
+    generated with:
+
+    traces_df, fits_df, buds_df = database.read_in_trace_fits_buds_dfs()
+
+    return result, results_df, x, y_pred, x_median, y_median
+    """
+
+    default_ratecolor = (50/255, 41/255, 100/255) # JPC121 color
+    default_ratecolor = (160/255, 32/255, 240/255) # purple
+
+    if 'strain_name' in sub_fits_df.columns:
+        strains = sub_fits_df.strain_name.unique()
+        strain = sub_fits_df.strain_name.unique()[0]
+        if strain in strains_color_dict.keys():
+            ratecolor = strains_color_dict[strain]
+        else:
+            ratecolor = default_ratecolor
+            print(f'Defaulting to {default_ratecolor} color for scatterplot')
+    elif 'samplename' in sub_fits_df.columns:
+        strains = sub_fits_df.samplename.iloc[0]
+        samplename = sub_fits_df.samplename.iloc[0]
+        if strain in strains_color_dict.keys():
+            ratecolor = strains_color_dict[samplename]
+        else:
+            ratecolor = default_ratecolor
+            print(f'Defaulting to {default_ratecolor} color for scatterplot')
+    else:
+        strains = 'None'
+        samplename = 'None'
+        print(f'Defaulting to {default_ratecolor} color for scatterplot')
+        ratecolor = default_ratecolor
+    postsep_border = kwargs.get('post_sep_border', -5)
+    pre_post_SEP_palette = get_pre_post_sep_palette()
+    fig, ax = figure_ax(width_scale=width_scale)
+    fig.set_dpi(300)
+    # If we model the data then result and results_df will be created
+    result, results_df = None, None
+    alpha = scatteralpha
+    size = 15
+    fontsize=10
+    ylabel1 = 'Cycle duration (hrs)'
+    ylabel2 = annoying_strings().k_inverse_hrs
+    # Define empty variables for smoothed x and 
+    # predicted y from whatever model we use below
+    x = None
+    y_pred = None
+    # Define median of yvar1 at each xvar
+    x_median = sub_fits_df.sort_values(by=xvar, ascending=True)[xvar].unique()
+    y_median = sub_fits_df.sort_values(by=xvar, ascending=True).loc[:, [xvar, yvar1]].pivot_table(index=[xvar], aggfunc='median').values
+    y_median = np.reshape(y_median, len(y_median))
+    if fillsep:
+        # Shade post-SEP area
+        xfill = np.arange(postsep_border + 0.5, 1.5, 0.5)
+        ax.fill_between(
+            xfill,
+            np.full(len(xfill), np.max(ylim_k)),
+            color=pre_post_SEP_palette[1],
+            alpha=fillalpha,
+            edgecolor=None)
+        # Shade pre-SEP area
+        xfill = np.arange(np.min(xlim) - 0.5, postsep_border, 0.5)
+        ax.fill_between(
+            xfill,
+            np.full(len(xfill), np.max(ylim_k)),
+            color=pre_post_SEP_palette[0],
+            alpha=fillalpha,
+            edgecolor=None)
+
+    if fit_type=='logistic':
+        # fit to logistic
+        if constrain_logistic == True:
+            fitsdf, smoothdf, result = fitting_tools.fit_logistic_to_fits_df(
+                sub_fits_df,
+                yvar=yvar1,
+                xvar=xvar,
+                return_result=True)
+            kernsize = 3
+            trace_tools.mean_filter(
+                smoothdf,
+                'stderr',
+                kernsize,
+                name_with_kernel=True)
+
+            params = (fitsdf.L.iloc[0], fitsdf.k.iloc[0], fitsdf.x_center.iloc[0], fitsdf.offset.iloc[0])
+            x = sub_fits_df.sort_values(by=xvar, ascending=True)[xvar].unique()
+            y_pred = fitting_tools.logistic(x, *params)
+            ax.plot(x, y_pred, color=ratecolor)
+        elif constrain_logistic == False:
+            result, results_df = fitting_tools.fit_model_to_df(sub_fits_df,
+                                                           ~sub_fits_df[yvar1].isna(),
+                                                           fitting_tools.model_guesses.logistic[0],
+                                                           fitting_tools.model_guesses.logistic[1],
+                                                           yvar=yvar1,
+                                                           xvar=xvar
+                                                        )
+            x = sub_fits_df.sort_values(by=xvar, ascending=True)[xvar].unique()
+            y_pred = result.model.eval(params=result.params, x=x)
+            ax.plot(x, y_pred, color=ratecolor)
+            
+    elif fit_type=='exponential':
+        # fit to exponential
+        result, results_df = fitting_tools.fit_model_to_df(sub_fits_df,
+                                                           ~sub_fits_df[yvar1].isna(),
+                                                           fitting_tools.model_guesses.exponential_turn_down[0],
+                                                           fitting_tools.model_guesses.exponential_turn_down[1],
+                                                           yvar=yvar1,
+                                                           xvar=xvar
+                                                        )
+        x = np.sort(sub_fits_df[xvar].unique())
+        y_pred = result.model.eval(params=result.params, x=x)
+        ax.plot(x, y_pred, color=ratecolor)
+            
+    elif fit_type=='piecewise':
+        # fit to logistic
+        result, results_df = fitting_tools.fit_model_to_df(sub_fits_df, ~sub_fits_df[yvar1].isna(),
+                                                        fitting_tools.model_guesses.piecewise_linear[0],
+                                                        fitting_tools.model_guesses.piecewise_linear[1],
+                                                        yvar=yvar1,
+                                                        xvar=xvar
+                                                        )
+        x = np.sort(sub_fits_df[xvar].unique())
+        x_smooth = np.arange(np.min(x), np.max(x), 0.1)
+        y_pred = result.model.eval(params=result.params, x=x)
+        y_pred_smooth = result.model.eval(params=result.params, x=x_smooth)
+        ax.plot(x_smooth, y_pred_smooth, color=ratecolor)
+
+    elif fit_type=='line':
+        # Fit to line
+        results_df, smoothdf, result = fitting_tools.fit_line_to_fits_df(
+            sub_fits_df,
+            return_result=True,
+            xvar=xvar,
+            yvar=yvar1)
+        x = np.sort(sub_fits_df[xvar].unique())
+        params = (results_df.m.iloc[0], results_df.b.iloc[0])
+        y_pred = fitting_tools.line(x, *params)
+        ax.plot(x, y_pred, color=ratecolor)
+
+    elif fit_type=='median':
+        
+        sns.lineplot(x=xvar, y=yvar1, data=sub_fits_df, ax=ax, color=ratecolor, estimator=np.median)
+        
+        x = sub_fits_df.sort_values(by=xvar, ascending=True)[xvar].unique()
+        y_pred = sub_fits_df.sort_values(by=xvar, ascending=True).loc[:, [xvar, yvar1]].pivot_table(index=[xvar], aggfunc='median').values
+        y_pred = np.reshape(y_pred, len(y_pred))
+
+    else:
+        print(f'No fit type <{fit_type}>. Please use either logistic, line, piecewise, or median')
+    # Derive statistics of fit
+    r_sq, ydata, ypred = fitting_tools.get_r_sq_with_multi_y_per_x(x, y_pred, sub_fits_df, return_new_y_ypreds=True, xvar=xvar, yvar=yvar1)
+    n = len(sub_fits_df)
+    # Shade standard error of the mean for 
+    if shade_stderr:
+        xvar_fill = 'x_input_smooth'
+        yvar_fill = 'y_pred'
+        errvar = f'stderr'
+        # errvar = f'stderr'
+
+        err_kwargs = {
+            'x': smoothdf[xvar_fill],
+            'y1': smoothdf[yvar_fill] + smoothdf[errvar],
+            'y2': smoothdf[yvar_fill] - smoothdf[errvar]
+        }
+
+        kwargs = {
+            'x': xvar_fill,
+            'y': 'y_pred',
+            'data': smoothdf,
+            'err_kws': err_kwargs
+        }
+        ax.fill_between(
+            err_kwargs['x'],
+            err_kwargs['y1'],
+            err_kwargs['y2'],
+            color=ratecolor,
+            alpha=0.2
+            )
+    # Format axes
+    ax.set_xlim(xlim)
+    ax.set_xlabel(xlabel, fontsize=fontsize)
+    ax.set_xticks(np.arange(xlim[0], xlim[1] + 1, 10))
+    ax.set_ylim(ylim_k)
+    ax.set_yticks(np.arange(0, ylim_k[1]+0.1, ylim_k[1]/5))
+    ax2 = ax.twinx()
+    ax2.set_ylim(ylim_cycle)
+    ax2.set_yticks(np.arange(0, ylim_cycle[1]+0.1, 1))
+    # plot cycle durations
+    if yvar2 is not None:
+        sns.lineplot(x=xvar, y=yvar2, data=sub_bud_df,ax=ax2, color='black')
+    # Plot rate constants
+    kwargs = {
+        'x': xvar,
+        'y': yvar1,
+        'alpha': alpha,
+        'data': sub_fits_df,
+        'ax': ax,
+        'size': size,
+        'color': ratecolor,
+        'linewidth': 0,
+        'edgecolor': ratecolor + (0,) #The (0, ) tuple adds alpha to the ratecolor tuple
+    }
+    sns.scatterplot(**kwargs)
+    ax.legend_.set_visible(False)
+    # Aesthetics
+    remove_spines(ax)
+    format_ticks(ax)
+    format_ticks(ax2)
+    ax2.spines['top'].set_visible(False)
+
+    ax2.set_ylabel(ylabel1, fontsize=fontsize)
+    ax.set_ylabel(ylabel2, color=ratecolor, fontsize=fontsize)
+    # Annotate stats
+    xy_n = (0.1, 0.9)
+    xy_rsq = (0.1, 0.8)
+    rsq_str = f'{annoying_strings().r_sq}={np.round(r_sq, 2)}'
+    n_str = f'N={np.round(n, 2)} measurements'
+    if fit_type == 'median':
+        pass
+        # ax.annotate(rsq_str, xy_rsq, fontsize=fontsize-1)
+    else:
+        ax.annotate(rsq_str, xy_rsq, fontsize=fontsize-1, xycoords='axes fraction')
+    ax.annotate(n_str, xy_n, fontsize=fontsize-1, xycoords='axes fraction')
+    kwargs = {
+        'x': 'dist_from_sen',
+        'y': 'k and cycle duration',
+        'strains': '-'.join(strains)
+    }
+    fig.set_dpi(300)
+    save_figure(fig, kwargs, ext='.svg')
+    save_figure(fig, kwargs, ext='.png')
+    if fit_type != 'piecewise':
+        return result, results_df, x, y_pred, x_median, y_median
+    else:
+        return result, results_df, x_smooth, y_pred_smooth, x_median, y_median
+
+# Various properties
 transparent_boxes_prop_dict = {
     'boxprops': {'facecolor': 'white', 'edgecolor': 'black', 'linewidth': 1},
     'medianprops': {'color': 'black', 'linewidth': 1},
@@ -1108,28 +1388,46 @@ transparent_boxes_prop_dict = {
     'capprops': {'color': 'black', 'linewidth': 1}
 }
 
+black_background_boxes_prop_dict = {
+    'boxprops': {'facecolor': 'black', 'edgecolor': 'white', 'linewidth': 1},
+    'medianprops': {'color': 'white', 'linewidth': 1},
+    'whiskerprops': {'color': 'white', 'linewidth': 1},
+    'capprops': {'color': 'white', 'linewidth': 1}
+}
+
 strains_color_dict = {
     'JPC000': (255/255, 102/255, 71/255),
     'JPC227': (255/255, 102/255, 71/255),
     'JPC228': (255/255, 102/255, 71/255),
     'JPC258': (255/255, 102/255, 71/255),
+    'wt_ubl': (255/255, 102/255, 71/255),
     'JPC257': (255/255, 102/255, 71/255),
     'JPC122': (255/255, 57/255, 86/255),
+    'wt_odc': (255/255, 57/255, 86/255),
     'JPC083': (255/255, 57/255, 86/255),
     'JPC261': (255/255, 57/255, 86/255),
     'JPC260': (255/255, 57/255, 86/255),
     'JPC121': (255/255, 147/255, 4/255),
-    'JPC263': (255/255, 147/255, 4/255),
+    'wt_rkk': (255/255, 147/255, 4/255),
+    'JPC263': (77/255, 77/255, 77/255),
+    'rpn4_rkk': (77/255, 77/255, 77/255),
+    'JPC277_26C': (77/255, 77/255, 77/255),
     'JPC146': (255/255, 147/255, 4/255),
     'JPC220': (255/255, 147/255, 4/255),
     'JPC262': (200/255, 55/255, 55/255),
+    'ubr2_rkk': (200/255, 55/255, 55/255),
     'JPC274': (0/255, 123/255, 209/255),
+    'mub1_rkk': (0/255, 123/255, 209/255),
     'JPC123': (0/255, 128/255, 0/255),
     'JPC136': (108/255, 83/255, 83/255),
     'JPC193': (106/255, 0/255, 128/255),
-    'JPC196': (237/255, 132/255, 223/255),
+    'JPC196': (204/255, 132/255, 223/255),
     'JPC199': (237/255, 132/255, 223/255),
-    'JPC258_r': (255/255, 0/255, 255/255)
+    'JPC258_r': (255/255, 0/255, 255/255),
+    'JPC279': (200/255, 55/255, 55/255),
+    'JPC282': (200/255, 55/255, 55/255),
+    'JPC259': (200/255, 55/255, 55/255),
+    'ubr2_ubl': (200/255, 55/255, 55/255),
 }
 
 other_colors = {
@@ -1144,5 +1442,7 @@ other_colors = {
     'Rpt1': (215/255, 215/255, 244/255),
     'mode1': (255/255, 0/255, 156/255),
     'mode2': (0/255, 14/255, 205/255),
-    'aggregate': (193/255, 180/255, 154/255)
+    'aggregate': (193/255, 180/255, 154/255),
+    'gfp': (95/255, 211/255, 95/255)
 }
+

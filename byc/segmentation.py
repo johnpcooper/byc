@@ -18,6 +18,8 @@ from skimage.measure import label, regionprops, regionprops_table
 from skimage import img_as_uint, img_as_ubyte
 from skimage.draw import polygon_perimeter
 
+import imageio # a pillow/PIL package
+
 from scipy.spatial import ConvexHull
 from scipy.signal import medfilt, find_peaks
 
@@ -918,7 +920,7 @@ def intensity_by_distance_and_theta(img, x_center, y_center, **kwargs):
     coordinates
     """
     distance_max = kwargs.get('distance_max', 25)
-    distance_min = kwargs.get('distance_min', 6)
+    distance_min = kwargs.get('distance_min', 8)
     theta_bin_size = kwargs.get('theta_bin_size', np.pi/16)
     dist_bin_size = kwargs.get('dist_bin_size', 1)
     thetas = np.arange(-np.pi, np.pi, theta_bin_size)
@@ -1823,6 +1825,9 @@ def segment_stack_with_fluor(stack, **kwargs):
             outlinesavepath = outlinesavepath.replace('.tif', f'_{maskpath_suffix}.tif')
         draw_mask_outlines(stack, objectmasks)
         io.imsave(outlinesavepath, stack, check_contrast=False)
+        # Save gif version
+        gifsavepath = outlinesavepath.replace('.tif', '.gif')
+        imageio.mimsave(gifsavepath, stack, duration=0.3, optimize=False, lossless=True)
         print(f'Saved segmented outlines at\n{outlinesavepath}')
         otsusavepath = filepath.replace('.tif', '_otsu_mask.tif')
         otsulist = [mask*1 for mask in otsu_masks]
@@ -1944,6 +1949,7 @@ def segment_and_measure_byc_dataset(
     channels_to_measure=['gfp'],
     var_to_exclude_rois='major_axis_length',
     set_outliers_to_nan=True,
+    width_max_cutoff=30,
     **kwargs
 ):
     cell_indices = mdf.cell_index.unique()
@@ -1955,7 +1961,8 @@ def segment_and_measure_byc_dataset(
         objectdfs, objectmasks, maskpath = segment_stack_with_fluor(
             stack,
             stackpath=stacktosegment_path,
-            maskpath_suffix=maskpath_suffix)
+            maskpath_suffix=maskpath_suffix,
+            width_max_cutoff=width_max_cutoff)
         channel_dfs = []
         for channel_name in channels_to_measure:
             # print(f'Measuring {channel_name} channel')
@@ -1975,6 +1982,13 @@ def segment_and_measure_byc_dataset(
                 var_to_exclude_roi=var_to_exclude_rois,
                 set_outliers_to_nan=set_outliers_to_nan)
             channel_dfs.append(channelcelldf)
+            # Save a copy of the cell channel stack with 
+            # cell area segmentation drawn on
+            outlinesavepath = stacktomeasure_path.replace('.tif', '_drawn_ROIs.tif')
+            if not os.path.exists(outlinesavepath):
+                draw_mask_outlines(stacktomeasure, objectmasks)
+                io.imsave(outlinesavepath, stacktomeasure, check_contrast=False)
+                print(f'Saved segmented outlines at\n{outlinesavepath}')
         # Merge together indiviual channel fluorescence measurement
         # dataframes into one celldf
         celldf = merge_cell_channel_dfs(
@@ -2006,7 +2020,7 @@ def refine_and_annotate_celldfs(
     """
 
     for cell_index, celldf in enumerate(celldfs):
-        cell_index = celldf.cell_index.unique()[0]
+        cell_index = int(celldf.cell_index.unique()[0])
         celldf.index = range(len(celldf))
         exptname = celldf.loc[0, 'exptname']
         compdir = os.path.join(constants.byc_data_dir, celldf.loc[0, 'compartment_reldir'])

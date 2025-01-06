@@ -307,12 +307,12 @@ def annotate_bud_and_crop_df_info_in_mdf(mdf, **kwargs):
     # bud_rois_df so don't annotate it here
     for col in crop_rois_alldf.columns:
         if col not in mdf.columns and col != 'end_event_type':
-            mdf.loc[:, col] = crop_rois_alldf.loc[:, col]
+            mdf.loc[:, col] = crop_rois_alldf.loc[:, col].values
     # Contains aggregate is only accurately annotated in the 
     # crop_rois_df so don't annotate it here
     for col in bud_rois_alldf.columns:
         if col not in mdf.columns and col != 'contains_aggregate':
-            mdf.loc[:, col] = bud_rois_alldf.loc[:, col]
+            mdf.loc[:, col] = bud_rois_alldf.loc[:, col].values
 
 def check_compartmentdir_for_channels(compartmentdir):
     """

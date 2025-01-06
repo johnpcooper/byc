@@ -599,12 +599,15 @@ def get_byc_display_and_comments_dict(expt_dir):
     """
     filepath = os.path.join(expt_dir, 'display_and_comments.txt')
     dictionary = None
-    # This is the micro-manager 2.0 paradigm of separate file
-    # output
     if not os.path.exists(filepath):
         # This is the micro-manager 2.0 paradigm of separate file
-        # output
-        filepath = os.path.join(expt_dir, 'Pos0\\metadata.txt')
+        # output. The metadata.txt file should be in the first sub-directory
+        subdir0 = [os.path.join(expt_dir, fn) for fn in os.listdir(expt_dir) if os.path.isdir(os.path.join(expt_dir, fn))][0]
+        if os.path.exists(subdir0):
+            filepath = os.path.join(subdir0, 'metadata.txt')
+        else:
+            print(f'No recognized metadata.txt-containing directory found at\n{expt_dir}')
+            return None
         if os.path.exists(filepath):
             with open(filepath) as file:
                 contents = file.read()
@@ -613,6 +616,8 @@ def get_byc_display_and_comments_dict(expt_dir):
             print(f'No file exists at\n{filepath}')
             return None
     else:
+        # This is the micro-manager 1.0 paradigm of separate file
+        # output
         with open(filepath, 'r') as file:
             contents = file.read()
             dictionary = ast.literal_eval(contents)            

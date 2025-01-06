@@ -1,6 +1,8 @@
+import os
+import pandas as pd
 import skimage.registration
 
-def determine_offsets(base_image, rotated_images):
+def determine_offsets(base_image, rotated_images, save_offset_data=True):
     """
     Use skimage.registration.phase_cross_correlation() to 
     find the translational offset in (Y, X) pixels of each 
@@ -19,7 +21,19 @@ def determine_offsets(base_image, rotated_images):
         offset = pcc[0]
         print(f'Offset Y={offset[0]} and X={offset[1]}')
         offsets.append(offset)
-        
+    if save_offset_data:
+        ys = [offset[0] for offset in offsets]
+        xs = [offset[1] for offset in offsets]
+        frames = range(len(offsets))
+        offsets_df = pd.DataFrame(
+            {
+                'x_offset': xs,
+                'y_offset': ys,
+                'frame': frames
+            }
+
+        )
+        offsets_df.to_csv('offsets.csv', index=False)
     return offsets
 
 def filter_offsets(offsets, n=10):

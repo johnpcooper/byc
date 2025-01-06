@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from byc import constants, utilities, files, plasmids, trace_tools
+from byc import constants, utilities, files, plasmids, trace_tools, fitting_tools
 from byc import standard_analysis as sa
 from byc.constants import patterns
 
@@ -158,7 +158,7 @@ class DataBase():
             writepath = writepaths[i]
             df.to_csv(writepath, index=False)
 
-def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
+def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, write_dfs=True, **kwargs):
     """
     After preliminary analysis and data fitting, write a final
     'fits_table.csv' and 'allfitsdf.csv' file for the BYC compartment
@@ -212,11 +212,13 @@ def write_final_fits_dfs(drops=[], fits_df=None, mdf=None, **kwargs):
     compdir = os.path.join(constants.byc_data_dir, compartment_dir)
     fits_table_savepath = os.path.join(compdir, fits_table_filename)
     fits_df_savepath = os.path.join(compdir, fits_and_traces_table_filename)
-    fits_table.to_csv(fits_table_savepath, index=False)
-    print(f'Saved exponential fits table at {fits_table_savepath}')
-    fits_df.to_csv(fits_df_savepath, index=False)
-    print(f'saved expanded exponential fits df at {fits_df_savepath}')
-    
+    if write_dfs:
+        fits_table.to_csv(fits_table_savepath, index=False)
+        print(f'Saved exponential fits table at {fits_table_savepath}')
+        fits_df.to_csv(fits_df_savepath, index=False)
+        print(f'saved expanded exponential fits df at {fits_df_savepath}')    
+    else:
+        print('Not saving fits_table or fits_df')
     if return_dfs:
         return fits_df, fits_table
     else:
@@ -238,8 +240,13 @@ def get_byc_fits_df(**kwargs):
     """
     compartment_name_var = 'compartment_name'
     return_traces_df = kwargs.get('return_traces_df', False)
+    compartment_names = kwargs.get('compartment_names', [])
 
     fits_table_paths = files.get_fits_table_paths()
+    if len(compartment_names)>0:
+        fits_table_paths = [path for path in fits_table_paths if os.path.basename(os.path.dirname(path)) in compartment_names]
+    else:
+        pass
     fits_tables = [pd.read_csv(p) for p in fits_table_paths]
     for i, table in enumerate(fits_tables):
         # Add a the compartment name from the fits_table_path
@@ -252,6 +259,10 @@ def get_byc_fits_df(**kwargs):
         print(f'Found date {date}, compartment name {compartment_name}')
 
     allfitsdf_paths = files.get_allfitsdf_paths()
+    if len(compartment_names)>0:
+        allfitsdf_paths = [path for path in allfitsdf_paths if os.path.basename(os.path.dirname(path)) in compartment_names]
+    else:
+        pass
     allfitsdfs = [pd.read_csv(p) for p in allfitsdf_paths]
     for i, df in enumerate(allfitsdfs):
         # Add a the compartment name from the fits_table_path
@@ -396,7 +407,12 @@ def set_cell_serial(df):
         
     return df
 
-def set_bud_id(df, include_compartment=True, return_df=False, prefix=''):
+def set_bud_id(
+    df,
+    include_compartment=True,
+    include_exptdate=False,
+    return_df=False,
+    prefix=''):
     """
     Add a column to <df> that allows identification of individual unique cells
     in the database
@@ -411,33 +427,50 @@ def set_bud_id(df, include_compartment=True, return_df=False, prefix=''):
     Return nothing as <df> is modified inplace
     """
     df.loc[:, 'bud_id'] = np.nan
-    df.loc[:, 'compartment-bud_id'] = np.nan
-    for idx in df.index.unique():
-        if include_compartment:
-            comp_name = df.loc[idx ,'compartment_name']
-        if 'bud_rois_path' in df.columns:
-            path = df.loc[idx, 'bud_rois_path']
-        elif 'bud_roi_set_path' in df.columns:
-            path = df.loc[idx, 'bud_roi_set_path']
-        else:
-            print(f'No column with bud roi set path')
-            return None
-
-        if not type(path) == float:
-            # print(f'Reading in bud rois from\n{path}')
-            if os.path.exists(path):
-                bud_roi_df = files.read_rectangular_rois_as_df(path)
+    df.loc[:, 'compartment_bud_id'] = np.nan
+    df.loc[:, 'date_bud_id'] = np.nan
+    if 'bud_rois_path' in df.columns:
+        path_colname = 'bud_rois_path'
+    elif 'bud_roi_set_path' in df.columns:
+        path_colname = 'bud_roi_set_path'
+    else:
+        print(f'No column with bud roi set path')
+        return None
+    # Define the function that we'll apply to get
+    # bud id values
+    def get_compartment_bud_id(compartment_name, bud_rois_path):
+        compartment_bud_id = np.nan
+        if not type(bud_rois_path) == float:
+            bud_rois_path = os.path.abspath(bud_rois_path)
+            if os.path.exists(bud_rois_path):
+                bud_roi_df = files.read_rectangular_rois_as_df(bud_rois_path)
                 bud_roi_serial = '-'.join([str(val) for val in bud_roi_df.position.values - 1])
-
-                if include_compartment:
-                    df.loc[idx, 'compartment-bud_id'] = f'{comp_name}-{prefix}{bud_roi_serial}'
-                df.loc[idx, 'bud_id'] = bud_roi_serial
+                compartment_bud_id = f'{compartment_name}-{prefix}{bud_roi_serial}'
             else:
-                df.loc[idx, 'compartment-bud_id'] = np.nan
-                df.loc[idx, 'bud_id'] = np.nan
+                print('No file at\n{bud_rois_path}')
+                return compartment_bud_id
         else:
-                df.loc[idx, 'compartment-bud_id'] = np.nan
-                df.loc[idx, 'bud_id'] = np.nan
+            return compartment_bud_id
+        return compartment_bud_id
+    
+    def get_date_bud_id(date, bud_rois_path):
+        compartment_bud_id = np.nan
+        if not type(bud_rois_path) == float:
+            bud_rois_path = os.path.abspath(bud_rois_path)
+            if os.path.exists(bud_rois_path):
+                bud_roi_df = files.read_rectangular_rois_as_df(bud_rois_path)
+                bud_roi_serial = '-'.join([str(val) for val in bud_roi_df.position.values - 1])
+                compartment_bud_id = f'{str(int(date))}-{prefix}{bud_roi_serial}'
+            else:
+                return compartment_bud_id
+        else:
+            return compartment_bud_id
+        return compartment_bud_id
+    if include_compartment:
+        df.loc[:, 'compartment_bud_id'] = df.apply(lambda x: get_compartment_bud_id(x.compartment_name, x[path_colname]), axis=1)
+
+    elif include_exptdate:
+        df.loc[:, 'date_bud_id'] = df.apply(lambda x: get_date_bud_id(x.date, x[path_colname]), axis=1)
     if return_df:
         return df
 
@@ -615,14 +648,29 @@ def annotate_daughter_shapes(bud_rois_df):
     bud_rois_df.loc[0:bud_rois_df.index.max()-1, 'bud_shape'] = bud_rois_df.bud_shape[1:].values
     bud_rois_df.loc[bud_rois_df.index.max(), 'bud_shape'] = np.nan
 
-def get_crop_roi_df_from_cell_index_compdir(cell_index, compartment_dir):
-
+def get_crop_roi_df_from_cell_index_compdir(cell_index, compartment_dir, return_path = False):
+    """
+    Find the "crop_rois_df.csv" with cell_index matching the <cell_index> found
+    in the <compartment_dir>
+    """
     crop_roi_df_fns = [fn for fn in os.listdir(compartment_dir) if 'crop_rois_df.csv' in fn]
-    crop_roi_df_fn = [fn for fn in crop_roi_df_fns if str(cell_index).zfill(3) in fn][0]
-    crop_roi_df_path = os.path.join(compartment_dir, crop_roi_df_fn)
-    crop_roi_df = pd.read_csv(crop_roi_df_path)
-
-    return crop_roi_df
+    if len(crop_roi_df_fns) == 0:
+        crop_roi_df, crop_roi_df_path = None, None
+        print(f'No crop_roi_df.csv files found in compartment:\n{compartment_dir}')
+    else:
+        cell_index_query = f'cell{str(cell_index).zfill(3)}'
+        crop_roi_df_fn_match_list = [fn for fn in crop_roi_df_fns if cell_index_query in fn]
+        if len(crop_roi_df_fn_match_list) == 1:
+            crop_roi_df_path = os.path.join(compartment_dir, crop_roi_df_fn_match_list[0])
+            crop_roi_df = pd.read_csv(crop_roi_df_path)
+        else:
+            print(f'Found {len(crop_roi_df_fn_match_list)} crop_roi_df.csvs for cell {cell_index} in compartment dir:\n{compartment_dir}')
+            crop_roi_df, crop_roi_df_path = None, None
+    
+    if return_path:
+        return crop_roi_df, crop_roi_df_path
+    else:
+        return crop_roi_df
 
 def read_in_trace_fits_buds_dfs():
     """
@@ -635,17 +683,19 @@ def read_in_trace_fits_buds_dfs():
 
     dfs = []
 
-    names = [
-        'traces_df.csv.gzip',
-        'fits_df.csv.gzip',
-        'buds_df.csv.gzip'
+    paths = [
+        constants.traces_df_path,
+        constants.fits_df_path,
+        constants.buds_df_path
     ]
 
-    for i, df in enumerate(names):
-        savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
-        df = pd.read_csv(savepath, compression='gzip')
-        dfs.append(df)
-        print(f'Read dataframe at\n{savepath}')
+    for path in paths:
+        df = pd.read_csv(path, compression='gzip')
+        # Add an increasing dist from sen column
+        df.loc[:, 'buds_after_death'] = 0 - df.dist_from_sen
+        # Get rid of data with erroneously calculated dist from sen
+        dfs.append(df[df.dist_from_sen>=0])
+        print(f'Read dataframe at\n{path}')
 
     traces_df, fits_df, buds_df = dfs
 
@@ -659,24 +709,400 @@ def write_trace_fits_buds_dfs(traces_df, fits_df, buds_df, save_non_gzip=False):
     """
     dfs = [traces_df, fits_df, buds_df]
 
-    names = [
-        'traces_df.csv.gzip',
-        'fits_df.csv.gzip',
-        'buds_df.csv.gzip'
+    paths = [
+        constants.traces_df_path,
+        constants.fits_df_path,
+        constants.buds_df_path
     ]
 
-    for i, df in enumerate(dfs):
-        savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
-        df.to_csv(savepath, compression='gzip')
-        print(f'Saved dataframe at\n{savepath}')
+    for i, path in enumerate(paths):
+        df = dfs[i]
+        df.to_csv(path, compression='gzip')
+        print(f'Saved dataframe at\n{path}')
 
     if save_non_gzip:
-        names = [name.replace('.gzip', '') for name in names]        
+        paths = [path.replace('.gzip', '') for path in paths]        
         for i, df in enumerate(dfs):
-            savepath = os.path.join(constants.byc_data_dir, f'meta/{names[i]}')
-            df.to_csv(savepath, index=False)
-            print(f'Saved dataframe at\n{savepath}')
+            path = paths[i]
+            df.to_csv(path, index=False)
+            print(f'Saved dataframe at\n{path}')
         
+def annotate_bud_info_on_fits_df(measdex, fits_df, buds_df, **kwargs):
+    """
+    For the cell referred to by <measdex>, find that cells
+    bud appearance roi .zip file and annotate the fits_dfa
+    row for that cell with information like, cycle duration
+    at chase, RLS, etc.
+
+    Modifies the <fits_df> in place.
+
+    Adds a compartment_bud_id to fits_df and buds_df so that
+    indivudal cells with multiple chases can be identified and
+    collated
+
+    If it fails for a cell, return None
+    Else, return cell_buds_df at the end
+    """
+    collection_interval_minutes = kwargs.get('collection_interval_minutes', 10)
+    measdex_bool = fits_df.measdex==measdex
+    cell_index = int(fits_df.loc[measdex_bool, 'cell_index'].iloc[0])
+    # Use the cell's crop ROI dataframe .csv file to annotate whether
+    # the cell contains an aggregate at the time the chase performed
+    compdir = files.abspath_from_relpath(fits_df.loc[measdex_bool, 'compartment_reldir'].iloc[0])
+    compname = fits_df.loc[measdex_bool, 'compartment_name'].iloc[0]
+    crop_roi_df, crop_roi_df_path =get_crop_roi_df_from_cell_index_compdir(cell_index, compdir, return_path=True)
+
+    print(f'cell_index={cell_index}, compartment\n{compdir}')
+    # If the datset wasn't annotated in an up to date way, the crop_roi_df.csv
+    # doesn't exist and we can continue on to the next cell/measdex
+    if crop_roi_df is not None:
+        pass
+    else:
+        print(f'Not annotating cell {cell_index} from compartment dir\n{compdir}')
+        return None
+    if 'contains_aggregate' in crop_roi_df.columns:
+        contains_aggregate = crop_roi_df.contains_aggregate.iloc[0]
+    else:
+        contains_aggregate = np.nan
+    fits_df.loc[measdex_bool, 'contains_aggregate'] = contains_aggregate
+    abs_chase_frame = fits_df[measdex_bool].abs_chase_frame.iloc[0]
+    # Read in and analyze the bud_rois_df if it exists
+    bud_rois_zip_path = fits_df[measdex_bool].bud_roi_set_path.iloc[0]
+    bud_rois_df_path = crop_roi_df_path.replace('_crop_', '_bud_')
+    # Convert to relative then back to absolute path in case the data
+    # are being annotatated a different location then they were generated
+    if type(bud_rois_zip_path) == str:
+        bud_rois_zip_relpath = utilities.get_relpath(bud_rois_zip_path)
+        bud_rois_zip_path = files.abspath_from_relpath(bud_rois_zip_relpath)
+        if os.path.exists(bud_rois_zip_path):
+            pass
+        else:
+            print(f'No file at\n{bud_rois_zip_path}')
+            return None
+    else:
+        print(f'Unable to read file at {bud_rois_zip_path} for cell {cell_index} in compartment at\n{compdir}')
+        return None
+    # Now that we know these bud annotation files should exist, we continue    
+    end_event_type = pd.read_csv(bud_rois_df_path).end_event_type.iloc[0]
+    cell_buds_df = files.read_rectangular_rois_as_df(bud_rois_zip_path)
+    cell_buds_df.sort_values(by='position', ascending=True, inplace=True)
+    cell_buds_df.reset_index(inplace=True)
+    # Last frame is the death frame so it's not included in cycle duration measurements
+    cell_buds_df.loc[:cell_buds_df.index.max()-2, 'cycle_duration_frames'] = np.diff(cell_buds_df.position[0:-1])
+    cell_buds_df.loc[:, 'cycle_duration_hrs'] = (cell_buds_df.cycle_duration_frames*collection_interval_minutes)/60
+    cell_buds_df.loc[:, 'frame'] = cell_buds_df.position - 1
+    # Create an identifier for the actual unique cell. "Cell" 1 and 2
+    # would be different measurements but if they have the same
+    # bud_id then they are the same cell measured twice
+    bud_id = compname + '-' + '-'.join(cell_buds_df.frame.astype(str))
+    cell_buds_df.loc[:, 'cycle_number'] = cell_buds_df.index
+    annotate_daughter_shapes(cell_buds_df)
+    n_long_daughters = len(cell_buds_df[cell_buds_df.bud_shape=='long'])
+    n_round_daughters = len(cell_buds_df[cell_buds_df.bud_shape=='round'])
+    # Annotate the last frame at which the cell was seen alive
+    # and get rid of it from the data so it doesn't get confused
+    # for a budding event
+    death_frame = cell_buds_df.frame.max()
+    cell_buds_df.loc[:, 'death_frame'] = death_frame
+    cell_buds_df = cell_buds_df.loc[0:cell_buds_df.index.max()-1, :]
+    # Add frame at which last bud occured and then annotate how many
+    # hours before death and before last bud when chase occurred
+    final_bud_frame = cell_buds_df.frame.max()
+    frames_before_last_bud = abs_chase_frame - final_bud_frame
+    hours_before_last_bud = (frames_before_last_bud*collection_interval_minutes)/60
+    frames_before_death = abs_chase_frame - death_frame
+    hours_before_death = (frames_before_death*collection_interval_minutes)/60
+    fits_df.loc[measdex_bool, 'hours_before_last_bud'] = hours_before_last_bud
+    fits_df.loc[measdex_bool, 'frames_before_last_bud'] = frames_before_last_bud
+    fits_df.loc[measdex_bool, 'hours_before_death'] = hours_before_death
+    fits_df.loc[measdex_bool, 'frames_before_death'] = frames_before_death
+    # Now that we've gotten rid of the death frame, we can annotate
+    # buds before death aka dist_from_sen
+    cell_buds_df.loc[:, 'dist_from_sen'] = cell_buds_df.cycle_number.max() - cell_buds_df.cycle_number
+    # Annotate the closest occuring cell cycle and
+    # where the cell was in that cycle when the chase occured
+    deltas = abs_chase_frame - cell_buds_df.frame
+    abs_deltas = np.abs(deltas)
+    cycle_number_closest_chase = np.argmin(abs_deltas)
+    # Annotate the true start frame of closest chase. If it isn't before
+    # or during the time of the chase, we might want to filter those cells
+    # out later
+    start_frame_of_closest_cycle = cell_buds_df.loc[cycle_number_closest_chase, 'frame']
+    # If the cell has already produced its last bud when the chase started,
+    # then the cycle duration from that bud is not defined because no
+    # bud comes after to define that cell cycle's end.
+    cycle_duration_at_chase = cell_buds_df.loc[cycle_number_closest_chase, 'cycle_duration_hrs']
+    # Annotate duration of the final cell cycle if we saw more than one bud for this cell
+    if len(cell_buds_df) > 1:
+        final_cycle_duration = cell_buds_df.loc[cell_buds_df.index.max()-1, 'cycle_duration_hrs']
+    else:
+        # We only observed one bud formation for this cell
+        final_cycle_duration = np.nan
+    # fractional progress through cell cycle
+    # Can only compute this if there were buds that appeared on either side
+    # of the chase frame
+    if abs_chase_frame >= start_frame_of_closest_cycle and cycle_number_closest_chase + 1 in list(cell_buds_df.index):
+        start_frame_next_cycle = cell_buds_df.loc[cycle_number_closest_chase + 1, 'frame']
+        n_frames_in_cycle = start_frame_next_cycle - start_frame_of_closest_cycle
+        fractional_progress_through_cycle = (abs_chase_frame - start_frame_of_closest_cycle)/n_frames_in_cycle
+        chase_occured_within_cycle = True    
+    elif abs_chase_frame < start_frame_of_closest_cycle and cycle_number_closest_chase -1 in list(cell_buds_df.index):
+        start_frame_previous_cycle = cell_buds_df.loc[cycle_number_closest_chase - 1, 'frame']
+        n_frames_in_cycle = start_frame_of_closest_cycle - start_frame_previous_cycle
+        fractional_progress_through_cycle = (start_frame_of_closest_cycle - abs_chase_frame)/n_frames_in_cycle
+        chase_occured_within_cycle = True
+    else:
+        fractional_progress_through_cycle = np.nan
+        chase_occured_within_cycle = False
+    # Start annotating the fits_df
+    # Store budding data etc. as a string of frame number separated by "-"
+    # to be extracted later
+    fits_df.loc[measdex_bool, 'bud_appearance_frames'] = '-'.join(cell_buds_df.frame.astype(str))
+    fits_df.loc[measdex_bool, 'cycle_numbers'] = '-'.join(cell_buds_df.cycle_number.astype(str))
+    fits_df.loc[measdex_bool, 'cycle_durations_frames'] = '-'.join(cell_buds_df.cycle_duration_frames.astype(str))
+    fits_df.loc[measdex_bool, 'dists_from_sen_at_cycle'] = '-'.join(cell_buds_df.dist_from_sen.astype(str))
+    # Store single scalar values like cycle_duration_at_chase etc.
+    fits_df.loc[measdex_bool, 'death_frame'] = death_frame # The frame in which the cell was last seen alive
+    fits_df.loc[measdex_bool, 'final_cycle_duration'] = final_cycle_duration
+    fits_df.loc[measdex_bool, 'start_frame_of_closest_cycle'] = start_frame_of_closest_cycle
+    fits_df.loc[measdex_bool, 'chase_occured_within_cycle'] = chase_occured_within_cycle
+    fits_df.loc[measdex_bool, 'fractional_progress_through_cycle'] = fractional_progress_through_cycle
+    fits_df.loc[measdex_bool,'end_event_type'] = end_event_type
+    fits_df.loc[measdex_bool, 'cycle_duration_at_chase'] = cycle_duration_at_chase
+    fits_df.loc[measdex_bool, 'rls'] = len(cell_buds_df)
+    fits_df.loc[measdex_bool, 'n_long_daughters'] = n_long_daughters
+    fits_df.loc[measdex_bool, 'n_round_daughters'] = n_round_daughters
+    fits_df.loc[measdex_bool, 'compartment_bud_id'] = bud_id
+    fits_df.loc[measdex_bool, 'first_bud_frame'] = cell_buds_df.frame.min()
+    buds_df.loc[buds_df.measdex==measdex, 'compartment_bud_id'] = bud_id
+    # If we didn't see the cell die, then its RLS is censored. This needs
+    # to be set before we account for when the cell entered observation below
+    # because if we observed its death but it came in late, then we need
+    # to set rls_observed back to False
+    fits_df.loc[fits_df.end_event_type!='death', 'rls_observed'] = False
+    # Only consider a cell's age at chase to be observed if the cell's
+    # bud production started being observed in the first 3 hours of the expt
+    if cell_buds_df.frame.min() < 19:
+        fits_df.loc[measdex_bool, 'age_at_chase'] = len(cell_buds_df[cell_buds_df.frame<=abs_chase_frame])
+        fits_df.loc[measdex_bool, 'rls_observed'] = True
+    else:
+        fits_df.loc[measdex_bool, 'age_at_chase'] = np.nan
+        fits_df.loc[measdex_bool, 'rls_observed'] = False
+    last_bud_hours = (cell_buds_df.frame.max()*collection_interval_minutes)/60
+    abs_chase_hours = (abs_chase_frame*collection_interval_minutes)/60
+    fits_df.loc[measdex_bool, 'hours_after_last_bud'] = abs_chase_hours - last_bud_hours
+
+    return cell_buds_df
+
 
 if __name__ == '__main__':
     byc_database = DataBase()
+
+# A function to get rid of duplicate/triplicate cell bud annotations
+# I create individual "cell" crop ROIs for each chase event I record,
+# and each of those crop ROIs needs a paired bud ROI set. So I just save
+# The same bud roi set for each "cell"'s crop ROI because it's just
+# different chases on the same cell. So the buds_df needs to be condensed
+# to have each cell's set of bud events appear once.
+# Create aggregation instructions so that
+# duplicate "cells" can be removed
+
+def get_clean_buds_df(buds_df, clean_escape_annotation=True):
+    buds_df.loc[:, 'bud_frequency_per_hr'] = 1/buds_df.cycle_duration_hrs
+    # Sometimes I forget to annotate end_event_type correctly when I 
+    # re-save bud ROI sets. So if any of them have escape annotated, set
+    # that as the end event type for all belonging to that cell
+    bud_serials = buds_df.compartment_bud_id.unique()
+    if clean_escape_annotation:
+        for i, bud_serial in enumerate(bud_serials):
+            if 'escape' in buds_df.loc[buds_df.compartment_bud_id==bud_serial, 'end_event_type'].values:
+                buds_df.loc[buds_df.compartment_bud_id==bud_serial, 'end_event_type'] = 'escape'
+            print(f'Properly annotated escape event for cell {i+1} of {len(bud_serials)}', end='\r')
+    cols = [
+        'bud_frequency_per_hr',
+        'cycle_duration_hrs',
+        'buds_after_death',
+        'compartment_bud_id',
+        'compartment_name',
+        'date',
+        'strain_name',
+        'rls',
+        'end_event_type',
+        'first_bud_frame',
+        'rls_suitable',
+        'background_genotype',
+        'bud_frame',
+        'dist_from_sen',
+        'cycle_duration_frames'
+    ]
+
+    aggdex = [
+        'compartment_bud_id',
+        'buds_after_death',
+        'compartment_name',
+        'date',
+        'strain_name',
+        'end_event_type',
+        'rls_suitable',
+        'background_genotype',
+    ]
+    buds_df_clean = buds_df.loc[:, cols].groupby(by=aggdex, as_index=False, dropna=False).mean()
+    return buds_df_clean
+
+def label_sepdf_and_buds_df(sepdf, buds_df):
+    """
+    Using compartment_bud_id common to both, annotate SEP point etc. on buds_df
+    and rls from buds_df on sepdf
+    """
+    bud_serials = sepdf.compartment_bud_id.unique()
+
+    for i, buddex in enumerate(bud_serials):
+        cellbool = buds_df.compartment_bud_id==buddex
+        if buds_df[cellbool].empty == False:
+            pass
+        else:
+            print(f'No buds_df data for cell\n{buddex}')
+            continue
+
+        rls = buds_df.loc[cellbool, 'rls'].iloc[0]
+        end_event = buds_df.loc[cellbool, 'end_event_type'].iloc[0]
+        first_bud_frame = buds_df.loc[cellbool, 'first_bud_frame'].iloc[0]
+        compartment_name = buds_df.loc[cellbool, 'compartment_name'].iloc[0]
+        sepdf.loc[sepdf.compartment_bud_id==buddex, 'rls'] = rls
+        sepdf.loc[sepdf.compartment_bud_id==buddex, 'end_event_type'] = end_event
+        sepdf.loc[sepdf.compartment_bud_id==buddex, 'first_bud_frame'] = first_bud_frame
+        sepdf.loc[sepdf.compartment_bud_id==buddex, 'compartment_name'] = compartment_name
+        buds_df.loc[cellbool, 'SEP'] = sepdf.loc[sepdf.compartment_bud_id==buddex, 'x0'].iloc[0]
+        buds_df.loc[cellbool, 'SEP_stderr'] = sepdf.loc[sepdf.compartment_bud_id==buddex, 'x0_stderr'].iloc[0]
+        buds_df.loc[cellbool, 'SEP_stderr_frac'] = np.abs(sepdf.loc[sepdf.compartment_bud_id==buddex, 'x0_stderr_fraction'].iloc[0])
+        print(f'Annotated sepdf cell {i+1} of {len(bud_serials)}', end='\r')
+    sepdf.loc[:, 'buds_before_sep'] = sepdf.rls + sepdf.x0
+
+def generate_survivaldf(fits_df, buds_df):
+    """
+    For each unique compartment in fits_df, fit a kaplan meier survival curve
+    and annotate the data
+
+    Each compartmental survival curve dataframe gets concatenated into a final
+    survivaldf and some information is summarized in table
+
+    Return survivaldf, table
+    """
+    compnames = fits_df.compartment_name.unique()
+    dfs = []
+    table = pd.DataFrame(index = range(len(compnames)))
+    rls_tables_df = pd.DataFrame()
+    for i, compname in enumerate(compnames):
+        if compname in buds_df.compartment_name.unique():
+            pass
+        else:
+            print(f'Did not find {compname} in buds_df')
+            continue
+        compbdf = buds_df.loc[buds_df.compartment_name==compname, :]
+        table.loc[i, 'compartment_name'] = compname
+        # Fit even if not rls suitable. Can exclude these later
+        if compbdf.rls_suitable.iloc[0] != True:
+            pass
+        # if True in list(compbdf.rls_suitable.isna()):
+        #     continue
+        rls_table = fitting_tools.rls_table_from_buds_df(compbdf)
+        rls_table.loc[:, 'compartment_name'] = compname
+        rls_table.loc[:, 'rls_observed'] = rls_table.rls_observed.astype(bool)
+        # Add rls_table to a df so that original cell RLS and
+        # censor data can be returned
+        rls_tables_df = pd.concat([rls_tables_df, rls_table])
+        fit_dict = fitting_tools.survival_fit(rls_table)
+        dfdict = {
+            'x_kmf': np.array(fit_dict['x_kmf']),
+            'y_kmf': np.array(fit_dict['y_kmf']).flatten(),
+        }
+        df = pd.DataFrame(dfdict)
+        df.loc[:, 'compartment_name'] = compname
+        # Add data to the full df and table with row
+        # per compartment
+        for key in ['kmf_halflife', 'wbf_halflife', 'n_cells']:
+            df.loc[:, key] = fit_dict[key]
+            table.loc[i, key] = fit_dict[key]
+        # Add data from the original dataframe and the row
+        # per compartment table
+        for col in compbdf.columns:
+            if len(compbdf[col].unique()) == 1:
+                df.loc[:, col] = compbdf[col].unique()[0]
+                table.loc[i, col] = compbdf[col].unique()[0]
+        print(f'Fit RLS for {compname}')
+        dfs.append(df)
+        
+    survivaldf = pd.concat(dfs)
+    survivaldf.loc[:, 'date_deletion'] = survivaldf.date.astype(str).str.cat(survivaldf.strain_name, sep='_')
+    table.loc[:, 'date_deletion'] = table.date.astype(str).str.cat(table.background_genotype, sep='_')
+
+    return survivaldf, table, rls_tables_df
+
+def generate_survivaldf_pooled_compartments(fits_df, buds_df):
+    """
+    For each unique strain name in constants.compartments_dict.keys(),
+    fit a kaplan meier survival curve to the pooled survival data for 
+    each cell and annotate the data
+
+    Each survival curve dataframe gets concatenated into a final
+    survivaldf. 
+    
+    table contains a row for each condition 
+    
+    all_rls_table preserves the lifespan of each individual
+    cell and its censors which is required for log rank significance
+    tests later on.
+
+    Return survivaldf, table, all_rls_table
+    """
+    samplenames = constants.compartments_dict.keys()
+    dfs = []
+    table = pd.DataFrame(index = range(len(samplenames)))
+    rls_tables_df = pd.DataFrame()
+    for i, samplename in enumerate(samplenames):
+        sample_slice_bool = buds_df.compartment_name.isin(constants.compartments_dict[samplename])
+        rls_suitable_bool = buds_df.rls_suitable==True
+        if samplename == 'ubr2_xform_to_rkk':
+            compbdf = buds_df.loc[sample_slice_bool, :]
+        else:
+            compbdf = buds_df.loc[sample_slice_bool&rls_suitable_bool, :]
+        if compbdf.empty:
+            print(f'Did not find compartments for {samplename} in buds_df')
+            continue
+        else:
+            pass
+        table.loc[i, 'samplename'] = samplename
+        rls_table = fitting_tools.rls_table_from_buds_df(compbdf)
+        rls_table.loc[:, 'compartment_names'] = '|'.join(compbdf.compartment_name.unique())
+        rls_table.loc[:, 'samplename'] = samplename
+        rls_table.loc[:, 'rls_observed'] = rls_table.rls_observed.astype(bool)
+        # Add rls_table to a df so that original cell RLS and
+        # censor data can be returned
+        rls_tables_df = pd.concat([rls_tables_df, rls_table])
+        fit_dict = fitting_tools.survival_fit(rls_table)
+        dfdict = {
+            'x_kmf': np.array(fit_dict['x_kmf']),
+            'y_kmf': np.array(fit_dict['y_kmf']).flatten(),
+        }
+        df = pd.DataFrame(dfdict)
+        df.loc[:, 'compartment_name'] = '|'.join(compbdf.compartment_name.unique())
+        df.loc[:, 'samplename'] = samplename
+        # Add data to the full df and table with row
+        # per compartment
+        for key in ['kmf_halflife', 'wbf_halflife', 'n_cells']:
+            df.loc[:, key] = fit_dict[key]
+            table.loc[i, key] = fit_dict[key]
+        # Add data from the original dataframe and the row
+        # per compartment table
+        for col in compbdf.columns:
+            if len(compbdf[col].unique()) == 1:
+                df.loc[:, col] = compbdf[col].unique()[0]
+                table.loc[i, col] = compbdf[col].unique()[0]
+        print(f'Fit RLS for {samplename}')
+        dfs.append(df)
+        
+    survivaldf = pd.concat(dfs)
+    survivaldf.loc[:, 'date_deletion'] = survivaldf.date.astype(str).str.cat(survivaldf.strain_name, sep='_')
+    table.loc[:, 'date_deletion'] = table.date.astype(str).str.cat(table.background_genotype, sep='_')
+
+    return survivaldf, table, rls_tables_df

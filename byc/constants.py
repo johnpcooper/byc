@@ -31,6 +31,9 @@ database_paths = {'cell_trace_db_path': os.path.join(package_path, 'cell_trace_d
 # that need to be fully hardcoded - steady_state_data_dir, steady_state_rep_image_dir,
 # and flow_data_dir
 byc_data_dir = os.path.join(source_path, 'data/')
+fits_df_path = os.path.join(byc_data_dir, 'meta/fits_df.csv.gzip')
+traces_df_path = os.path.join(byc_data_dir, 'meta/traces_df.csv.gzip')
+buds_df_path = os.path.join(byc_data_dir, 'meta/buds_df.csv.gzip')
 compartment_index_path = os.path.join(byc_data_dir, 'meta/compartments_index.csv')
 steady_state_data_dir = "C:/Users/johnp/Box/Finkelstein-Matouschek/images/"
 steady_state_rep_image_dir  = os.path.join(source_path, 'notebooks')
@@ -80,6 +83,7 @@ default_fluor_channels = ['yfp', 'rfp']
 default_channel_names = ['bf', 'yfp', 'rfp']
 all_channel_names = ['bf', 'yfp', 'rfp', 'mko', 'bfp', 'gfp']
 default_raw_channel_names = ['Brightfield', 'YFP', 'RFP']
+default_ratecolor = (160/255, 32/255, 240/255) # purple
 
 # Some constants for quickly accessing construct names and features
 plasmids_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/plasmids/"
@@ -88,6 +92,7 @@ ytk_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/plasmids
 strains_dir = "C:/Users/johnp\\Box/Finkelstein-Matouschek/yeast_engineering/strains"
 strains_db_path = r'C:\Users\johnp\\Box\Finkelstein-Matouschek\yeast_engineering\strains\JPC_Strains.xlsx'
 substrates_index_path = r'C:\Users\johnp\\Box\Finkelstein-Matouschek\images\meta_analysis\Analysis\Substrates_Index.csv'
+
 
 class Patterns(object):
 
@@ -357,13 +362,22 @@ compartments_dict = {
         '20230810_byc_JPC262_R-YFP-Su9_ubr2d',
         '20230714_byc_JPC262_R-YFP-Su9_ubr2d',
         '20230822_byc_JPC262_R-YFP-Su9_in_ubr2d'
-    ],   
+    ],
+    'ubr2_xform_to_rkk': [
+        '20240405_byc_JPC279_streaked-isolate-A_R-YFP-Su9_xformed-with-ubr2d',
+        '20240405_byc_JPC279_streaked-isolate-B_R-YFP-Su9_xformed-with-ubr2d',
+        '20240321_byc_JPC279_RKK-YFP-Su9_xformed_with_ubr2d_comp2'
+    ],
     'ubr2_ubl': [
         '20230518_byc_JPC259_DsRed-P2A-UBL-YFP-Su9_ubr2d'
     ],
     'rpn4_rkk': [
         '20230303_byc_JPC263_R-YFP-Su9_rpn4d',
-        '20230609_byc_JPC277_R-YFP-Su9_in_rpn4d_cue5d'
+        '20230609_byc_JPC277_R-YFP-Su9_in_rpn4d_cue5d',
+        '20240801_byc_JPC263_rkk_rpn4d_isolate-1',
+        '20240801_byc_JPC263_rkk_rpn4d_isolate-2',
+        '20240801_byc_JPC263_rkk_rpn4d_isolate-3',
+        '20240709_byc_JPC263_rkk_rpn4d'
     ],
     'rpn4_odc': [
         '20230224_byc_JPC261_YFP-ODC_rpn4d'
@@ -387,5 +401,12 @@ compartments_dict = {
     'ubr1OE_rkk': [
         '20220118_byc_JPC136_pJC359_Ubr1_OE_w_pJC495',
         '20230324_byc_JPC136_R-YFP-Su9_Ubr1-OE'
+    ],
+    'wt_dsred': [
+        '20230201_byc_JPC228-20230127-int_UBL-YFP-Su9x3_BY4741_rfp'
+    ],
+    
+    'wt_nls-rkk': [
+        '20241025_byc_JPC112_with_H2A-mCherry_isolate-1'
     ]
 }

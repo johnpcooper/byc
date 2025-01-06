@@ -1,9 +1,15 @@
 import os, re, shutil, skimage
+
 import numpy as np
 import pandas as pd
+from skimage import io
+
 import tkinter as tk
 import tkinter.filedialog as tkdia
+
 from functools import reduce
+
+import nd2
 
 from byc import constants
 
@@ -55,6 +61,8 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
             for channel_name in channel_names:
                 if ('measdirname' in info.keys() and 'path' in info.keys()):
                     measdirname = info.measdirname
+                    if '.tif' in measdirname:
+                        measdirname = measdirname.replace('.tif', '')
                     possible_suffs = [f'_{num}' for num in [1, 2, 3, 4, 5]]
                     print(f'Reading from measdirname:\n{measdirname}')
                     # micromanager typically adds a _1 string to the end 
@@ -81,18 +89,23 @@ def set_steady_state_dfs_list(master_df, max_n_fovs):
                         else:
                             print(f'No file found')
                 else:
-                    print(f'No measdirname column in master index')                    
+                    print(f'No measdirname column in master index')
             if len(channel_dfs) > 0:
                 fov_merged_df = reduce(lambda x, y: pd.merge(x, y, on='cell_index'), channel_dfs)
                 fov_dfs_list.append(fov_merged_df)
         print(f'Found {len(fov_dfs_list)} .csvs')
-        final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
+        if len(fov_dfs_list) > 0:
+            final_df = pd.concat(fov_dfs_list, ignore_index=True, sort=False)
+        else:
+            print('No data found for this condition, returning empty dataframe')
+            final_df = pd.DataFrame(None)
             
         # add identifying information to final dataset:
         for i in range(0, len(master_df.columns)):
             column_name = list(master_df.columns)[i]
             value = info[i]
-            final_df.loc[:, f'{column_name}'] = value
+            if not final_df.empty:
+                final_df.loc[:, f'{column_name}'] = value
         
         dfs_list.append(final_df)
         
@@ -428,3 +441,44 @@ class Constants():
         # See analysis of 20230216 imaging of JPC121 in YFP and 
         # RFP channels for derivation of this value
         self.yfp_to_rfp_compensation_factor = 0.04019830128347812
+
+
+def convert_nd2_files(exptname):
+    """
+    Takes a set of old .nd2 files from the <exptname> directory
+    in constants.steady_state_data_dir and saves them as individual
+    channel tifs using nd2 metadata
+    """
+    exptdir = os.path.join(constants.steady_state_data_dir, exptname)
+    datasavedir = os.path.join(exptdir, 'data')
+    if not os.path.exists(datasavedir):
+        os.mkdir(datasavedir)
+        print(f'Created directory at\n{datasavedir}')
+    filenames = [fn for fn in os.listdir(exptdir) if fn[-4:] == '.nd2']
+    metadatas = []
+    img_arrs = []
+    for filename in filenames:
+        filepath = os.path.join(exptdir, filename)
+        img_arr = nd2.imread(filepath)
+        img_arrs.append(img_arr)
+        with nd2.ND2File(filepath) as ndfile:
+            metadata = ndfile.metadata
+            metadatas.append(metadata)
+        # Extract names of channels and their positions in the img_arr
+        # then save the image with its channel name as a tif with 
+        # skimage.io. These are the names used in updated steady
+        # state image analysis
+        for channel_idx, Channel in enumerate(metadata.channels):
+            channelname = Channel.channel.name
+            if channelname == '':
+                channelname = 'bf'
+            elif channelname == 'YFP':
+                channelname = 'yfp'
+            elif channelname == 'dsRed':
+                channelname = 'rfp'
+            else:
+                print(f'Using original channel name {channelname}')
+            channelfilename = filename.replace('.nd2', f'_{channelname}.tif')
+            writepath = os.path.join(datasavedir, channelfilename)
+            io.imsave(writepath, img_arr[channel_idx])
+            print(f'Saved file at\n{writepath}')

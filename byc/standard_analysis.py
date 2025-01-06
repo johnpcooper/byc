@@ -26,7 +26,7 @@ class bycDataSet(object):
     those measurements using imagejpc/utilities/measure_rois
     """       
     def __init__(self, manual_select=False, **kwargs):
-
+        self.channel = kwargs.get('channel', 'yfp')
         # example gotten from one of byc.database.byc_database.master_index_dfs_dict.keys()
         example_compartment_name = '20200214_byc'
         if manual_select:
@@ -37,7 +37,7 @@ class bycDataSet(object):
 
         # Read in data for each cell in the master index, add proper
         # time column and other annotations from the master index df
-        self.cell_trace_dfs = self.make_cell_trace_dfs(self.master_index_df)
+        self.cell_trace_dfs = self.make_cell_trace_dfs(self.master_index_df, channel=self.channel)
         self.compartment_name = kwargs.get('compartment_name', self.get_compartment_name())
         self.compartment_dir = self.get_compartment_dir()
 
@@ -249,7 +249,7 @@ class bycDataSet(object):
 
         trace_dfs = []
         for cell_index in mdf.cell_index:
-            
+            # print(f'Finding measurements for cell {cell_index}')
             pattern = f'cell{str(cell_index).zfill(3)}'
             candidates = [re.search(pattern, path) for path in measurement_csv_paths]
             matches = [candidate for candidate in candidates if candidate != None]
@@ -563,6 +563,7 @@ def create_and_annotate_mdf(exptname, compartmentname,
     else:
         print(f"Using user defined mdf and savepath")
     # Make sure that the relpaths set in the master index are truly
+    
     # relative
     for col in mdf.columns:
         if 'rel' in col:
