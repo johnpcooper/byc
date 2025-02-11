@@ -1137,6 +1137,7 @@ def plot_k_vs_dist_from_sen(
         fillalpha = 0.25,
         fillsep = True,
         width_scale=1,
+        n_suffix='',
         constrain_logistic=False,
         **kwargs):
     """
@@ -1162,7 +1163,8 @@ def plot_k_vs_dist_from_sen(
             ratecolor = strains_color_dict[strain]
         else:
             ratecolor = default_ratecolor
-            print(f'Defaulting to {default_ratecolor} color for scatterplot')
+            strain = 'JPC121'
+            print(f'Defaulting to {default_ratecolor} color for scatterplot and strain name JPC121')
     elif 'samplename' in sub_fits_df.columns:
         strains = sub_fits_df.samplename.iloc[0]
         samplename = sub_fits_df.samplename.iloc[0]
@@ -1360,7 +1362,7 @@ def plot_k_vs_dist_from_sen(
     xy_n = (0.1, 0.9)
     xy_rsq = (0.1, 0.8)
     rsq_str = f'{annoying_strings().r_sq}={np.round(r_sq, 2)}'
-    n_str = f'N={np.round(n, 2)} measurements'
+    n_str = f'N={np.round(n, 2)}{n_suffix}'
     if fit_type == 'median':
         pass
         # ax.annotate(rsq_str, xy_rsq, fontsize=fontsize-1)
